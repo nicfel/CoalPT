@@ -61,6 +61,8 @@ public class SimulatedCoalescentWithPlamidsNetwork extends Network {
         }else {
         	nPlasmids = treesInput.get().size()-1;
         }       
+        
+        segmentCount = nPlasmids+1;
 
         populationFunction = populationFunctionInput.get();
         plasmidTransferRate = plasmidTransferRateInput.get();

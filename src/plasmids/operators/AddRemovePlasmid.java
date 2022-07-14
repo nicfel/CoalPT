@@ -157,20 +157,21 @@ public class AddRemovePlasmid extends DivertPlasmidOperator {
         
         
 //        System.out.println(network);
-
+        
         logHR -= getLogUnconditionedPlasmidProb(sourceEdge.hasSegments);
         
-        
+
 
         
         logHR -= addSegmentsToAncestors(reassortmentEdge, segsToDivert);
+
         
 //        if (logHR==Double.NEGATIVE_INFINITY)
-//        	System.out.println("before  " + logHR);
 
 //        System.out.println(network);
         
         logHR += removeSegmentsFromAncestors(newEdge1, segsToDivert);
+
 
         return logHR;
     }
@@ -230,11 +231,12 @@ public class AddRemovePlasmid extends DivertPlasmidOperator {
         return logHR;
     }
 
-
+    int stop=0;
     double removePlasmidEdge(NetworkEdge edgeToRemove) {
         double logHR = 0.0;
 
         network.startEditing(this);
+        
 
         NetworkNode nodeToRemove = edgeToRemove.childNode;
         NetworkEdge edgeToRemoveSpouse = getSpouseEdge(edgeToRemove);
@@ -242,11 +244,23 @@ public class AddRemovePlasmid extends DivertPlasmidOperator {
 
         // Divert segments away from chosen edge
         BitSet segsToDivert = (BitSet) edgeToRemove.hasSegments.clone();
-        
+//        System.out.println("");
+//        System.out.println(network);
+
         logHR -= addSegmentsToAncestors(edgeToRemoveSpouse, segsToDivert);
-        logHR += removeSegmentsFromAncestors(edgeToRemove, segsToDivert);
+//        System.out.println(logHR);
+
         
+        logHR += removeSegmentsFromAncestors(edgeToRemove, segsToDivert);
+//        System.out.println(logHR);
+//        if (logHR<0)
+//        	stop++;
+
         logHR += getLogUnconditionedPlasmidProb(edgeToRemoveSpouse.hasSegments);
+//        System.out.println(logHR);
+        	
+        
+
         
         // Remove edge and associated nodes
         NetworkEdge edgeToExtend = nodeToRemove.getChildEdges().get(0);
@@ -276,6 +290,16 @@ public class AddRemovePlasmid extends DivertPlasmidOperator {
 
         if (!networkTerminatesAtMRCA())
             return Double.NEGATIVE_INFINITY;
+        
+        if (logHR==Double.NEGATIVE_INFINITY) {
+            System.out.println(network);
+            System.exit(0);
+        }
+
+//        System.out.println(network);
+//        if (stop>10)
+//        	System.exit(0);
+
 
         return logHR;
     }

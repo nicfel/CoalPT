@@ -19,8 +19,8 @@ public class DivertPlasmidOperator extends EmptyEdgesNetworkOperator {
     @Override
     public void initAndValidate() {
         super.initAndValidate();
-    	prob = 1/(network.getSegmentCount()-1);
-    }
+    	prob = 1.0/(network.getSegmentCount()-1);
+   	}
 
 	
     @Override
@@ -76,6 +76,7 @@ public class DivertPlasmidOperator extends EmptyEdgesNetworkOperator {
             		segsToAddLeft.set(segIdx);
             	}else if (segsToAddRight.cardinality()>1 && segsToAddLeft.cardinality()==1) { // has to follow the path with more plasmids already there as only one plasmid is transferred at a time
             		segsToAddRight.set(segIdx);
+
             	}else if (segsToAddLeft.cardinality()==1 && segsToAddRight.cardinality()==1) { // as neither path has the core genome, just randomly pick a path
                     if (edge.parentNode.getParentEdges().get(0).hasSegments.get(segIdx))
                         segsToAddLeft.set(segIdx);
@@ -103,7 +104,7 @@ public class DivertPlasmidOperator extends EmptyEdgesNetworkOperator {
                     	segsToAddLeft.set(segIdx);
             		}else if (edge.parentNode.getParentEdges().get(1).hasSegments.get(segIdx)) {
             			segsToAddRight.set(segIdx);
-                        logP += Math.log(prob);
+                        logP += Math.log(1-prob);
                     }else {
                     	segsToAddLeft.set(segIdx);
                         logP += Math.log(1-prob);
@@ -118,6 +119,7 @@ public class DivertPlasmidOperator extends EmptyEdgesNetworkOperator {
                     	segsToAddRight.set(segIdx);
                         logP += Math.log(1-prob);
                     }
+
             	} else {
             		throw new IllegalArgumentException("scenario unknown, should not happen");
             	}
@@ -137,7 +139,7 @@ public class DivertPlasmidOperator extends EmptyEdgesNetworkOperator {
 
         }
         
-
+        
         return logP;
     }
 
@@ -229,6 +231,7 @@ public class DivertPlasmidOperator extends EmptyEdgesNetworkOperator {
                         logP += Math.log(1-prob);
                     }
             	} else {
+            		System.out.println(network);
             		throw new IllegalArgumentException("scenario unknown, should not happen");
             	}
         	}
@@ -262,8 +265,8 @@ public class DivertPlasmidOperator extends EmptyEdgesNetworkOperator {
         
         int nrPlasmids = sourceSegments.cardinality();
         nrPlasmids -= sourceSegments.get(0) ? 1 : 0;
-
-        return Math.log(1/nrPlasmids);
+        
+        return Math.log(1.0/nrPlasmids);
     }
     
     
