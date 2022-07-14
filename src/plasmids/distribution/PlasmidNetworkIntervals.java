@@ -49,7 +49,7 @@ public class PlasmidNetworkIntervals extends CalculationNode {
         	hasMultipleRates = true;
     }
 
-    List<NetworkEvent> getNetworkEventList() {
+    public List<NetworkEvent> getNetworkEventList() {
         update();
 
         return networkEventList;

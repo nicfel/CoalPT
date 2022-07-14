@@ -6,18 +6,19 @@ import coalre.distribution.CoalescentWithReassortment;
 import coalre.distribution.NetworkEvent;
 import coalre.network.NetworkEdge;
 import coalre.network.NetworkNode;
+import plasmids.distribution.CoalescentWithPlasmids;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
-public class AddRemovePlasmidCoalescent extends DivertSegmentOperator {
+public class AddRemovePlasmidCoalescent extends DivertPlasmidOperator {
 
-    public Input<CoalescentWithReassortment> coalescentDistrInput = new Input<>("coalescentWithReassortment",
+    public Input<CoalescentWithPlasmids> coalescentDistrInput = new Input<>("coalescentWithPlasmids",
             "Mean of exponential used for choosing root attachment times.",
             Input.Validate.REQUIRED);
 
 
-    CoalescentWithReassortment coalescentDistr;
+    CoalescentWithPlasmids coalescentDistr;
 
     @Override
     public void initAndValidate() {
@@ -134,7 +135,8 @@ public class AddRemovePlasmidCoalescent extends DivertSegmentOperator {
         // HR contribution for reverse move
         int nRemovableEdges = (int) network.getEdges().stream()
                 .filter(e -> !e.isRootEdge())
-                .filter(e -> e.hasSegments.cardinality()>=1)
+                .filter(e -> e.hasSegments.cardinality()==1)
+                .filter(e -> !e.hasSegments.get(0))
                 .filter(e -> e.childNode.isReassortment())
                 .filter(e -> e.parentNode.isCoalescence())
                 .count();
@@ -195,8 +197,8 @@ public class AddRemovePlasmidCoalescent extends DivertSegmentOperator {
         reassortmentEdge.hasSegments = new BitSet();
 
         // Choose segments to divert to new edge
-        BitSet segsToDivert = getRandomConditionedSubset(sourceEdge.hasSegments);
-        logHR -= getLogConditionedSubsetProb(sourceEdge.hasSegments);
+        BitSet segsToDivert = getRandomPlasmid(sourceEdge.hasSegments);
+        logHR -= getLogUnconditionedPlasmidProb(sourceEdge.hasSegments);
         logHR -= addSegmentsToAncestors(reassortmentEdge, segsToDivert);
         logHR += removeSegmentsFromAncestors(newEdge1, segsToDivert);
 
@@ -208,7 +210,8 @@ public class AddRemovePlasmidCoalescent extends DivertSegmentOperator {
         
         List<NetworkEdge> removableEdges = network.getEdges().stream()
                 .filter(e -> !e.isRootEdge())
-                .filter(e -> e.hasSegments.cardinality()>=1)
+                .filter(e -> e.hasSegments.cardinality()==1)
+                .filter(e -> !e.hasSegments.get(0))
                 .filter(e -> e.childNode.isReassortment())
                 .filter(e -> e.parentNode.isCoalescence())
                 .collect(Collectors.toList());
@@ -300,7 +303,7 @@ public class AddRemovePlasmidCoalescent extends DivertSegmentOperator {
         BitSet segsToDivert = (BitSet) edgeToRemove.hasSegments.clone();
         logHR -= addSegmentsToAncestors(edgeToRemoveSpouse, segsToDivert);
         logHR += removeSegmentsFromAncestors(edgeToRemove, segsToDivert);
-        logHR += getLogConditionedSubsetProb(edgeToRemoveSpouse.hasSegments);
+        logHR += getLogUnconditionedPlasmidProb(edgeToRemoveSpouse.hasSegments);
 
         // Remove edge and associated nodes
         NetworkEdge edgeToExtend = nodeToRemove.getChildEdges().get(0);
