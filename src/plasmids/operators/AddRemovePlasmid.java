@@ -13,7 +13,7 @@ import java.io.PrintStream;
 import java.util.*;
 import java.util.stream.Collectors;
 
-public class AddRemoveReassortment extends DivertPlasmidOperator {
+public class AddRemovePlasmid extends DivertPlasmidOperator {
 
     public Input<Double> alphaInput = new Input<>("alpha",
             "Mean of exponential used for choosing root attachment times.",
@@ -33,14 +33,14 @@ public class AddRemoveReassortment extends DivertPlasmidOperator {
 
         double logHR;
         if (Randomizer.nextBoolean())
-            logHR = addReassortment();
+            logHR = addPlasmid();
         else
-            logHR = removeReassortment();
+            logHR = removePlasmid();
 
         return logHR;
     }
 
-    double addReassortment() {
+    double addPlasmid() {
         double logHR = 0.0;
 
         List<NetworkEdge> networkEdges = new ArrayList<>(network.getEdges());
@@ -79,7 +79,7 @@ public class AddRemoveReassortment extends DivertPlasmidOperator {
 
         // Create new reassortment edge
 
-        logHR += addReassortmentEdge(sourceEdge, sourceTime, destEdge, destTime);
+        logHR += addPlasmidEdge(sourceEdge, sourceTime, destEdge, destTime);
 
         if (logHR == Double.NEGATIVE_INFINITY)
             return Double.NEGATIVE_INFINITY;
@@ -87,16 +87,18 @@ public class AddRemoveReassortment extends DivertPlasmidOperator {
         // HR contribution for reverse move
         int nRemovableEdges = (int) network.getEdges().stream()
                 .filter(e -> !e.isRootEdge())
-                .filter(e -> e.hasSegments.cardinality()>=1)
+                .filter(e -> e.hasSegments.cardinality()==1)
+                .filter(e -> !e.hasSegments.get(0))
                 .filter(e -> e.childNode.isReassortment())
                 .filter(e -> e.parentNode.isCoalescence())
                 .count();
+        
         logHR += Math.log(1.0/nRemovableEdges);
 
         return logHR;
     }
 
-    double addReassortmentEdge(NetworkEdge sourceEdge, double sourceTime,
+    double addPlasmidEdge(NetworkEdge sourceEdge, double sourceTime,
                                NetworkEdge destEdge, double destTime) {
 
         double logHR = 0.0;
@@ -146,20 +148,22 @@ public class AddRemoveReassortment extends DivertPlasmidOperator {
         reassortmentEdge.hasSegments = new BitSet();
 
         // Choose segments to divert to new edge
-        BitSet segsToDivert = getRandomConditionedSubset(sourceEdge.hasSegments);
-        logHR -= getLogConditionedSubsetProb(sourceEdge.hasSegments);
+        BitSet segsToDivert = getRandomPlasmid(sourceEdge.hasSegments);
+        logHR -= getLogUnconditionedPlasmidProb(sourceEdge.hasSegments);
+        
         logHR -= addSegmentsToAncestors(reassortmentEdge, segsToDivert);
         logHR += removeSegmentsFromAncestors(newEdge1, segsToDivert);
 
         return logHR;
     }
 
-    double removeReassortment() {
+    double removePlasmid() {
         double logHR = 0.0;
 
         List<NetworkEdge> removableEdges = network.getEdges().stream()
                 .filter(e -> !e.isRootEdge())
-                .filter(e -> e.hasSegments.cardinality()>=1)
+                .filter(e -> e.hasSegments.cardinality()==1)
+                .filter(e -> !e.hasSegments.get(0))
                 .filter(e -> e.childNode.isReassortment())
                 .filter(e -> e.parentNode.isCoalescence())
                 .collect(Collectors.toList());
@@ -178,7 +182,7 @@ public class AddRemoveReassortment extends DivertPlasmidOperator {
         double destTime = edgeToRemove.parentNode.getHeight();
 
         // Remove reassortment edge
-        logHR += removeReassortmentEdge(edgeToRemove);
+        logHR += removePlasmidEdge(edgeToRemove);
 
         if (logHR == Double.NEGATIVE_INFINITY)
             return Double.NEGATIVE_INFINITY;
@@ -209,7 +213,7 @@ public class AddRemoveReassortment extends DivertPlasmidOperator {
     }
 
 
-    double removeReassortmentEdge(NetworkEdge edgeToRemove) {
+    double removePlasmidEdge(NetworkEdge edgeToRemove) {
         double logHR = 0.0;
 
         network.startEditing(this);
@@ -222,7 +226,9 @@ public class AddRemoveReassortment extends DivertPlasmidOperator {
         BitSet segsToDivert = (BitSet) edgeToRemove.hasSegments.clone();
         logHR -= addSegmentsToAncestors(edgeToRemoveSpouse, segsToDivert);
         logHR += removeSegmentsFromAncestors(edgeToRemove, segsToDivert);
-        logHR += getLogConditionedSubsetProb(edgeToRemoveSpouse.hasSegments);
+        
+        
+        logHR += getLogUnconditionedPlasmidProb(edgeToRemoveSpouse.hasSegments);
 
         // Remove edge and associated nodes
         NetworkEdge edgeToExtend = nodeToRemove.getChildEdges().get(0);

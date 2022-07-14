@@ -121,11 +121,17 @@ public class PlasmidNetworkIntervals extends CalculationNode {
     
     private double getObsProb(NetworkEdge edge) {
     	if (hasMultipleRates) {
-	    	for (int i=1; i < edge.hasSegments.length());
-	    		if (edge.hasSegments)
-	    			return 0;
-	    			
+    		double prob = 0;
+	    	for (int i=1; i < edge.hasSegments.length(); i++) {
+	    		if (edge.hasSegments.get(i)) {
+	    			prob += plasmidTransferRate.getArrayValue(i-1);
+	    		}    			
+	    	}
+	    	return prob;
     	}
+    	
+    	if (edge.hasSegments.cardinality()==1)
+    		return 0;
     	
         int nrplasmids = edge.hasSegments.cardinality();
         nrplasmids -= edge.hasSegments.get(0) ? 1 : 0;

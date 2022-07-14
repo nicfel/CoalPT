@@ -17,7 +17,7 @@ import java.util.List;
  */
 
 @Description("Calculates the probability of a core genomes + plasmids network under" +
-        " the framework of Mueller (2021).")
+        " the framework of Mueller (2022).")
 public class CoalescentWithPlasmids extends PlasmidNetworkDistribution {
 
 	public Input<PopulationFunction> populationFunctionInput = new Input<>(
@@ -56,7 +56,7 @@ public class CoalescentWithPlasmids extends PlasmidNetworkDistribution {
 					break;
 
 				case REASSORTMENT:
-					logP += reassortment(event);
+					logP += plasmidTransfer(event);
 					break;
 			}
 
@@ -68,15 +68,8 @@ public class CoalescentWithPlasmids extends PlasmidNetworkDistribution {
 		return logP;
     }
     
-	private double reassortment(NetworkEvent event) {
-		
-		double binomval = Math.pow(intervals.getBinomialProb(), event.segsSortedLeft)
-				* Math.pow(1-intervals.getBinomialProb(), event.segsToSort-event.segsSortedLeft) 
-				+ Math.pow(intervals.getBinomialProb(), event.segsToSort-event.segsSortedLeft)
-				* Math.pow(1-intervals.getBinomialProb(), event.segsSortedLeft); 
-				        
-		return Math.log(intervals.plasmidTransferRate.getArrayValue())
-				+ Math.log(binomval);
+	private double plasmidTransfer(NetworkEvent event) {				        
+		return Math.log(intervals.plasmidTransferRate.getArrayValue());
 	}
 
 	private double coalesce(NetworkEvent event) {
@@ -88,7 +81,7 @@ public class CoalescentWithPlasmids extends PlasmidNetworkDistribution {
 
         double result = 0.0;
 
-        result += -intervals.plasmidTransferRate.getArrayValue() * prevEvent.totalReassortmentObsProb
+        result += -prevEvent.totalReassortmentObsProb
                 * (nextEvent.time - prevEvent.time);
 
 		result += -0.5*prevEvent.lineages*(prevEvent.lineages-1)
@@ -98,10 +91,7 @@ public class CoalescentWithPlasmids extends PlasmidNetworkDistribution {
 	}
 	
     @Override
-    protected boolean requiresRecalculation() {    	
-    	if (((CalculationNode) plasmidTransferRate).isDirtyCalculation())
-    		return true;
-    	
+    protected boolean requiresRecalculation() {    	   	
     	if (((CalculationNode) populationFunction).isDirtyCalculation())
     		return true;
     	

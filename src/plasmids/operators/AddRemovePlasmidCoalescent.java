@@ -10,7 +10,7 @@ import coalre.network.NetworkNode;
 import java.util.*;
 import java.util.stream.Collectors;
 
-public class AddRemoveReassortmentCoalescent extends DivertSegmentOperator {
+public class AddRemovePlasmidCoalescent extends DivertSegmentOperator {
 
     public Input<CoalescentWithReassortment> coalescentDistrInput = new Input<>("coalescentWithReassortment",
             "Mean of exponential used for choosing root attachment times.",

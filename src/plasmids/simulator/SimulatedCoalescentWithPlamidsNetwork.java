@@ -57,7 +57,7 @@ public class SimulatedCoalescentWithPlamidsNetwork extends Network {
     public void initAndValidate() {
 
         if (treesInput.get().isEmpty()) {
-        	nPlasmids = nPlasmidsInput.get()+1;
+        	nPlasmids = nPlasmidsInput.get();
         }else {
         	nPlasmids = treesInput.get().size()-1;
         }       
