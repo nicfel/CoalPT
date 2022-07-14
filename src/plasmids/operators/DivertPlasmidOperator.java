@@ -19,50 +19,13 @@ public class DivertPlasmidOperator extends EmptyEdgesNetworkOperator {
     @Override
     public void initAndValidate() {
         super.initAndValidate();
-    	prob  = 1/(network.getSegmentCount()-1);
+    	prob = 1/(network.getSegmentCount()-1);
     }
 
 	
     @Override
     public double networkProposal() {
 		throw new IllegalArgumentException("not an operator");
-//
-//        double logHR = 0.0;
-//
-//        List<NetworkEdge> sourceEdges = network.getEdges().stream()
-//                .filter(e -> e.childNode.isReassortment())
-//                .filter(e -> e.hasSegments.cardinality()>0)
-//                .collect(Collectors.toList());
-//
-//        if (sourceEdges.isEmpty())
-//            return Double.NEGATIVE_INFINITY;
-//
-//        logHR -= Math.log(1.0/sourceEdges.size());
-//
-//        NetworkEdge sourceEdge = sourceEdges.get(Randomizer.nextInt(sourceEdges.size()));
-//        NetworkEdge destEdge = getSpouseEdge(sourceEdge);
-//        
-//        BitSet segsToDivert = getRandomUnconditionedSubset(sourceEdge.hasSegments);
-//        logHR -= getLogUnconditionedSubsetProb(sourceEdge.hasSegments);
-//        
-//        if (segsToDivert.cardinality()==0)
-//        	return Double.NEGATIVE_INFINITY;
-//
-//        network.startEditing(this);
-//        
-//
-//        logHR -= addSegmentsToAncestors(destEdge, segsToDivert);
-//        logHR += removeSegmentsFromAncestors(sourceEdge, segsToDivert);
-//
-//        logHR += getLogUnconditionedSubsetProb(destEdge.hasSegments);
-//
-//        int reverseSourceEdgeCount = (int)(network.getEdges().stream()
-//                .filter(e -> e.childNode.isReassortment())
-//                .filter(e -> e.hasSegments.cardinality()>0)
-//                .count());
-//
-//        logHR += Math.log(1.0/reverseSourceEdgeCount);
-//        return logHR;
     }
 
 
@@ -91,6 +54,7 @@ public class DivertPlasmidOperator extends EmptyEdgesNetworkOperator {
         	
             BitSet segsToAddLeft = (BitSet) edge.parentNode.getParentEdges().get(0).hasSegments.clone();
             BitSet segsToAddRight = (BitSet) edge.parentNode.getParentEdges().get(1).hasSegments.clone();
+            
             segsToAddLeft.andNot(segsToRemove);
             segsToAddRight.andNot(segsToRemove);
             
@@ -103,7 +67,7 @@ public class DivertPlasmidOperator extends EmptyEdgesNetworkOperator {
                     else
                         segsToAddRight.set(segIdx);
 
-                    logP -= Math.log(0.5);
+                    logP += Math.log(0.5);
             	}else if (segsToAddLeft.get(0) && segsToAddRight.cardinality()==1) { // has to follow the core genome when there is already a plasmid transferred
             		segsToAddLeft.set(segIdx);
             	}else if (segsToAddRight.get(0) && segsToAddLeft.cardinality()==1) { // has to follow the core genome when there is already a plasmid transferred
@@ -117,42 +81,42 @@ public class DivertPlasmidOperator extends EmptyEdgesNetworkOperator {
                         segsToAddLeft.set(segIdx);
                     else
                         segsToAddRight.set(segIdx);
-                    logP -= Math.log(0.5);
+                    logP += Math.log(0.5);
             	}else if (segsToAddLeft.cardinality()==1 && segsToAddRight.cardinality()==0) { // left path has one, right has 0, doesn't matter where core goes
                     if (edge.parentNode.getParentEdges().get(1).hasSegments.get(segIdx)) {
                     	segsToAddRight.set(segIdx);
-                        logP -= Math.log(prob);
+                        logP += Math.log(prob);
                     }else {
                     	segsToAddLeft.set(segIdx);
-                        logP -= Math.log(1-prob);
+                        logP += Math.log(1-prob);
                     }
             	}else if (segsToAddRight.cardinality()==1 && segsToAddLeft.cardinality()==0) { // right path has one, left has 0, doesn't matter where core goes
                     if (edge.parentNode.getParentEdges().get(0).hasSegments.get(segIdx)) {
                     	segsToAddLeft.set(segIdx);
-                        logP -= Math.log(prob);
+                        logP += Math.log(prob);
                     }else {
                     	segsToAddRight.set(segIdx);
-                        logP -= Math.log(1-prob);
+                        logP += Math.log(1-prob);
                     }
             	}else if (segsToAddLeft.cardinality()>1 && segsToAddRight.cardinality()==0) { // left path has 2+, right has 0, core goes left, otherwise random
             		if (segIdx==0) {
                     	segsToAddLeft.set(segIdx);
             		}else if (edge.parentNode.getParentEdges().get(1).hasSegments.get(segIdx)) {
             			segsToAddRight.set(segIdx);
-                        logP -= Math.log(prob);
+                        logP += Math.log(prob);
                     }else {
                     	segsToAddLeft.set(segIdx);
-                        logP -= Math.log(1-prob);
+                        logP += Math.log(1-prob);
                     }
             	} else if (segsToAddRight.cardinality()>1 && segsToAddLeft.cardinality()==0) { // right path has 2+, left has 0, core goes right, otherwise random
             		if (segIdx==0) {
             			segsToAddRight.set(segIdx);
             		}else if (edge.parentNode.getParentEdges().get(0).hasSegments.get(segIdx)) {
             			segsToAddLeft.set(segIdx);
-                        logP -= Math.log(prob);
+                        logP += Math.log(prob);
                     }else {
                     	segsToAddRight.set(segIdx);
-                        logP -= Math.log(1-prob);
+                        logP += Math.log(1-prob);
                     }
             	} else {
             		throw new IllegalArgumentException("scenario unknown, should not happen");
@@ -172,6 +136,7 @@ public class DivertPlasmidOperator extends EmptyEdgesNetworkOperator {
             logP += removeSegmentsFromAncestors(edge.parentNode.getParentEdges().get(0), segsToRemove);
 
         }
+        
 
         return logP;
     }
@@ -282,7 +247,7 @@ public class DivertPlasmidOperator extends EmptyEdgesNetworkOperator {
 
         destSegments.clear();
         
-        int index =0;
+        int index = 0;
         
         do {
         	index = Randomizer.nextInt(network.getSegmentCount()-1)+1;
@@ -296,9 +261,9 @@ public class DivertPlasmidOperator extends EmptyEdgesNetworkOperator {
     protected double getLogUnconditionedPlasmidProb(BitSet sourceSegments) {
         
         int nrPlasmids = sourceSegments.cardinality();
-        nrPlasmids -= sourceSegments.get(0) ? 1 :0;
+        nrPlasmids -= sourceSegments.get(0) ? 1 : 0;
 
-        return 1/nrPlasmids;
+        return Math.log(1/nrPlasmids);
     }
     
     
