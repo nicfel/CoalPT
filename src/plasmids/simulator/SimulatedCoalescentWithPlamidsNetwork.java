@@ -177,7 +177,7 @@ public class SimulatedCoalescentWithPlamidsNetwork extends Network {
             		totPlasmidRate+=plasmidTransferRate.getArrayValue(i);
             }
             
-            double timeToNextPlasmidTransfer = k>=1 ? Randomizer.nextExponential(k*totPlasmidRate) : Double.POSITIVE_INFINITY;;
+            double timeToNextPlasmidTransfer = k>=1 ? Randomizer.nextExponential(k*totPlasmidRate) : Double.POSITIVE_INFINITY;
 
             // next event time
             double timeUntilNextEvent = Math.min(timeToNextCoal, timeToNextPlasmidTransfer);
