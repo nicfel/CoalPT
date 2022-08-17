@@ -37,6 +37,8 @@ public class CoalescentWithPlasmids extends PlasmidNetworkDistribution {
     }
 
     public double calculateLogP() {
+//    	System.out.println("====");
+//    	System.out.println(intervals.networkInput.get());
     	logP = 0;
     	// Calculate tree intervals
     	List<NetworkEvent> networkEventList = intervals.getNetworkEventList();
@@ -65,11 +67,34 @@ public class CoalescentWithPlasmids extends PlasmidNetworkDistribution {
 
         	prevEvent = event;
         }        
+//    	System.out.println(logP + " " + storedLogP);
 		return logP;
     }
     
-	private double plasmidTransfer(NetworkEvent event) {				        
-		return Math.log(intervals.plasmidTransferRate.getArrayValue());
+	private double plasmidTransfer(NetworkEvent event) {
+		if (intervals.hasMultipleRates) {
+			if (event.segsLeft.cardinality()==0 || event.segsRight.cardinality()==0) {
+				return Double.NEGATIVE_INFINITY;
+			}
+			
+			if (event.segsLeft.cardinality()>1) {
+				return Math.log(intervals.plasmidTransferRate.getArrayValue(event.segsRight.nextSetBit(0)-1));
+			}else if (event.segsRight.cardinality()>1){
+				return Math.log(intervals.plasmidTransferRate.getArrayValue(event.segsLeft.nextSetBit(0)-1));
+				
+			}else if (event.segsLeft.get(0)){
+				return Math.log(intervals.plasmidTransferRate.getArrayValue(event.segsRight.nextSetBit(0)-1));
+			}else if (event.segsRight.get(0)){
+				return Math.log(intervals.plasmidTransferRate.getArrayValue(event.segsLeft.nextSetBit(0)-1));
+			}else {
+				double rate = intervals.plasmidTransferRate.getArrayValue(event.segsLeft.nextSetBit(0)-1) +
+						intervals.plasmidTransferRate.getArrayValue(event.segsRight.nextSetBit(0)-1);
+				return Math.log(rate/2);
+			}
+
+		}else {
+			return Math.log(intervals.plasmidTransferRate.getArrayValue());
+		}
 	}
 
 	private double coalesce(NetworkEvent event) {
@@ -90,13 +115,13 @@ public class CoalescentWithPlasmids extends PlasmidNetworkDistribution {
 		return result;
 	}
 	
-    @Override
-    protected boolean requiresRecalculation() {    	   	
-    	if (((CalculationNode) populationFunction).isDirtyCalculation())
-    		return true;
-    	
-        return super.requiresRecalculation();
-    }
+//    @Override
+//    protected boolean requiresRecalculation() {    	   	
+//    	if (((CalculationNode) populationFunction).isDirtyCalculation())
+//    		return true;
+//    	
+//        return super.requiresRecalculation();
+//    }
     
 
 }

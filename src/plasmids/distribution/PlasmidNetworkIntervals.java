@@ -12,6 +12,7 @@ import coalre.network.Network;
 import coalre.network.NetworkEdge;
 
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -22,11 +23,12 @@ import java.util.stream.Collectors;
 public class PlasmidNetworkIntervals extends CalculationNode {
     public Input<Network> networkInput = new Input<>("network",
             "network for which to calculate the intervals", Validate.REQUIRED);
-
 	
 	public Input<Function> plasmidTransferRateInput = new Input<>(
 	        "plasmidTransferRate",
             "Rate of jumping of an individual plasmid");
+	
+	
 
     private Network network;
 
@@ -42,11 +44,12 @@ public class PlasmidNetworkIntervals extends CalculationNode {
         network = networkInput.get();
 
         storedNetworkEventList = new ArrayList<>();
-        
+                
         plasmidTransferRate = plasmidTransferRateInput.get();
         
         if (plasmidTransferRate.getDimension()>1)
         	hasMultipleRates = true;
+        update();
     }
 
     public List<NetworkEvent> getNetworkEventList() {
@@ -58,7 +61,7 @@ public class PlasmidNetworkIntervals extends CalculationNode {
     void update() {
         if (!eventListDirty)
             return;
-
+        
         networkEventList = network.getNodes().stream().map(n -> {
             NetworkEvent event = new NetworkEvent();
             event.time = n.getHeight();
@@ -99,8 +102,17 @@ public class PlasmidNetworkIntervals extends CalculationNode {
                     totalTransferObsProb += getObsProb(event.node.getParentEdges().get(0));
                     totalTransferObsProb += getObsProb(event.node.getParentEdges().get(1));
 
-                    event.segsToSort = event.node.getChildEdges().get(0).hasSegments.cardinality();
-                    event.segsSortedLeft = event.node.getParentEdges().get(0).hasSegments.cardinality();
+                    event.segsLeft = (BitSet) event.node.getParentEdges().get(0).hasSegments.clone();
+                    event.segsRight = (BitSet) event.node.getParentEdges().get(1).hasSegments.clone();
+                    
+//                    if (event.segsLeft.cardinality()==0 || event.segsRight.cardinality()==0) {
+//                    	System.out.println(event.node.getChildEdges().get(0).childNode.getTaxonLabel());
+//
+//                    	System.out.println(event.node.getChildEdges().get(0).childNode.getHeight());
+//                    	System.out.println(event.node.getChildEdges().get(0).parentNode.getHeight());
+//                    	System.out.println(networkInput.get());
+//                    	System.exit(0);
+//                    }
                     break;
 
                 case COALESCENCE:

@@ -35,6 +35,8 @@ public class GibbsOperatorAbovePlasmidRoots extends NetworkOperator {
 
     @Override
     public void initAndValidate() {
+        super.initAndValidate();
+        
     	nSegments = segmentTreesInput.get().size();
     	
         populationFunction = populationFunctionInput.get();
@@ -42,7 +44,6 @@ public class GibbsOperatorAbovePlasmidRoots extends NetworkOperator {
         
         nPlasmids = network.getSegmentCount()-1;
         
-        super.initAndValidate();
     }
 
     @Override

@@ -1,5 +1,6 @@
 package plasmids.distribution;
 
+import beast.core.CalculationNode;
 import beast.core.Distribution;
 import beast.core.Input;
 import beast.core.Input.Validate;
@@ -25,5 +26,6 @@ public class PlasmidNetworkDistribution extends Distribution {
     @Override
     public void sample(State state, Random random) {
     }
+    
 
 }

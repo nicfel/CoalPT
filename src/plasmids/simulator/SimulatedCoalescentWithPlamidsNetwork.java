@@ -8,6 +8,7 @@ import beast.evolution.alignment.TaxonSet;
 import beast.evolution.tree.TraitSet;
 import beast.evolution.tree.Tree;
 import beast.evolution.tree.coalescent.PopulationFunction;
+import beast.math.distributions.MRCAPrior;
 import beast.util.Randomizer;
 import cern.colt.Arrays;
 import coalre.network.Network;
@@ -40,6 +41,9 @@ public class SimulatedCoalescentWithPlamidsNetwork extends Network {
 
     public Input<TaxonSet> taxonSetInput = new Input<>("taxonSet",
             "Taxon set used to define leaves");
+    
+    public Input<List<TaxonSet>> plasmidTaxonSetInput = new Input<>("plasmidTaxonSet",
+            "Taxon set used to define plasmid leaves, needed if not all sequences have all plasmids", new ArrayList<>());
 
     public Input<Boolean> enableSegTreeUpdateInput = new Input<>("enableSegmentTreeUpdate",
             "If false, segment tree objects won't be updated to agree with simulated " +
@@ -47,6 +51,9 @@ public class SimulatedCoalescentWithPlamidsNetwork extends Network {
 
     public Input<String> fileNameInput = new Input<>("fileName",
             "Name of file to write simulated network to.");
+    
+    final public Input<List<MRCAPrior>> calibrationsInput = new Input<>("constraint", "specifies (monophyletic or height distribution) constraints on internal nodes", new ArrayList<>());
+    
 
     private PopulationFunction populationFunction;
     private RealParameter plasmidTransferRate;
@@ -121,6 +128,13 @@ public class SimulatedCoalescentWithPlamidsNetwork extends Network {
                 segmentTree.setEverythingDirty(false);
             }
         }
+        
+//        System.out.println(this);
+//        for (int segIdx=0; segIdx<nPlasmids+1; segIdx++)
+//            System.out.println(treesInput.get().get(segIdx) +";");
+//        
+//        System.exit(0);
+
 
         // Write simulated network to file if requested
         if (fileNameInput.get() != null) {
@@ -204,7 +218,24 @@ public class SimulatedCoalescentWithPlamidsNetwork extends Network {
 
         // Create corresponding lineage
         BitSet hasSegs = new BitSet();
-        hasSegs.set(0, nPlasmids+1);
+        
+        if (plasmidTaxonSetInput.get()!=null) {
+        	hasSegs.set(0, true);
+            int c = 1;
+            for (TaxonSet t : plasmidTaxonSetInput.get()) {
+            	List<String> taxanames = t.asStringList();
+            	for (String taxa : taxanames) {
+                	if(taxa.contentEquals(n.getTaxonLabel())) {
+                		hasSegs.set(c, true);            		
+                	}
+            	}
+            	c++;
+            }          	
+        }else {
+            hasSegs.set(0, nPlasmids+1);
+
+        }
+        
         NetworkEdge lineage = new NetworkEdge(null, n, hasSegs);
         extantLineages.add(lineage);
         n.addParentEdge(lineage);
@@ -290,5 +321,4 @@ public class SimulatedCoalescentWithPlamidsNetwork extends Network {
         extantLineages.add(leftLineage);
         extantLineages.add(rightLineage);
     }
-
 }
