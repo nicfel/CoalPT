@@ -2,12 +2,9 @@ package plasmids.distribution;
 
 import beast.core.CalculationNode;
 import beast.core.Description;
-import beast.core.Function;
 import beast.core.Input;
 import beast.evolution.tree.coalescent.PopulationFunction;
-import coalre.distribution.NetworkDistribution;
 import coalre.distribution.NetworkEvent;
-import coalre.distribution.NetworkIntervals;
 
 import java.util.List;
 
@@ -25,6 +22,20 @@ public class CoalescentWithPlasmids extends PlasmidNetworkDistribution {
             "Population model.",
             Input.Validate.REQUIRED);
 	
+	public Input<Boolean> conditionOnCoalescentEventsInput = new Input<>(
+	        "conditionOnCoalescentEvents",
+            "if true, only coalescent events are allowed after the .",
+            true);	
+	
+	public Input<Double> maxHeightRatioInput = new Input<>(
+	        "maxHeightRatio",
+            "if specified, above the ratio, only coalescent events are allowed.", 1.25);	
+
+	public Input<Double> redFactorInput = new Input<>(
+	        "redFactor",
+            "by how much the recombination rate should be reduced after reaching the maxHeightRatio.", 0.0);	
+
+	
 
     public PopulationFunction populationFunction;
 
@@ -36,18 +47,22 @@ public class CoalescentWithPlasmids extends PlasmidNetworkDistribution {
         intervals = networkIntervalsInput.get();
     }
 
+//    int iii=0;
     public double calculateLogP() {
-//    	System.out.println("====");
-//    	System.out.println(intervals.networkInput.get());
     	logP = 0;
+    	
     	// Calculate tree intervals
     	List<NetworkEvent> networkEventList = intervals.getNetworkEventList();
 
     	NetworkEvent prevEvent = null;
+    	
+    	// get the mrca of all loci trees
+    	double lociMRCA = conditionOnCoalescentEventsInput.get() ? intervals.getMaxSegmentTreeHeight()*maxHeightRatioInput.get() : Double.POSITIVE_INFINITY;
+    	
 
     	for (NetworkEvent event : networkEventList) {
         	if (prevEvent != null)
-        		logP += intervalContribution(prevEvent, event);
+        		logP += intervalContribution(prevEvent, event, lociMRCA);
 
         	switch (event.type) {
 				case COALESCENCE:
@@ -58,7 +73,7 @@ public class CoalescentWithPlasmids extends PlasmidNetworkDistribution {
 					break;
 
 				case REASSORTMENT:
-					logP += plasmidTransfer(event);
+					logP += plasmidTransfer(event, lociMRCA);
 					break;
 			}
 
@@ -67,33 +82,56 @@ public class CoalescentWithPlasmids extends PlasmidNetworkDistribution {
 
         	prevEvent = event;
         }        
-//    	System.out.println(logP + " " + storedLogP);
 		return logP;
     }
     
-	private double plasmidTransfer(NetworkEvent event) {
+	private double plasmidTransfer(NetworkEvent event, double lociMRCA) {
 		if (intervals.hasMultipleRates) {
 			if (event.segsLeft.cardinality()==0 || event.segsRight.cardinality()==0) {
 				return Double.NEGATIVE_INFINITY;
 			}
 			
-			if (event.segsLeft.cardinality()>1) {
-				return Math.log(intervals.plasmidTransferRate.getArrayValue(event.segsRight.nextSetBit(0)-1));
-			}else if (event.segsRight.cardinality()>1){
-				return Math.log(intervals.plasmidTransferRate.getArrayValue(event.segsLeft.nextSetBit(0)-1));
-				
-			}else if (event.segsLeft.get(0)){
-				return Math.log(intervals.plasmidTransferRate.getArrayValue(event.segsRight.nextSetBit(0)-1));
-			}else if (event.segsRight.get(0)){
-				return Math.log(intervals.plasmidTransferRate.getArrayValue(event.segsLeft.nextSetBit(0)-1));
+			if (event.time>lociMRCA) {
+			
+				if (event.segsLeft.cardinality()>1) {
+					return Math.log(intervals.plasmidTransferRate.getArrayValue(event.segsRight.nextSetBit(0)-1) * redFactorInput.get() );
+				}else if (event.segsRight.cardinality()>1){
+					return Math.log(intervals.plasmidTransferRate.getArrayValue(event.segsLeft.nextSetBit(0)-1) * redFactorInput.get());
+					
+				}else if (event.segsLeft.get(0)){
+					return Math.log(intervals.plasmidTransferRate.getArrayValue(event.segsRight.nextSetBit(0)-1) * redFactorInput.get());
+				}else if (event.segsRight.get(0)){
+					return Math.log(intervals.plasmidTransferRate.getArrayValue(event.segsLeft.nextSetBit(0)-1) * redFactorInput.get());
+				}else {
+					double rate = intervals.plasmidTransferRate.getArrayValue(event.segsLeft.nextSetBit(0)-1) +
+							intervals.plasmidTransferRate.getArrayValue(event.segsRight.nextSetBit(0)-1);
+					
+					return Math.log(rate/2 * redFactorInput.get());
+				}
 			}else {
-				double rate = intervals.plasmidTransferRate.getArrayValue(event.segsLeft.nextSetBit(0)-1) +
-						intervals.plasmidTransferRate.getArrayValue(event.segsRight.nextSetBit(0)-1);
-				return Math.log(rate/2);
+				if (event.segsLeft.cardinality()>1) {
+					return Math.log(intervals.plasmidTransferRate.getArrayValue(event.segsRight.nextSetBit(0)-1));
+				}else if (event.segsRight.cardinality()>1){
+					return Math.log(intervals.plasmidTransferRate.getArrayValue(event.segsLeft.nextSetBit(0)-1));
+					
+				}else if (event.segsLeft.get(0)){
+					return Math.log(intervals.plasmidTransferRate.getArrayValue(event.segsRight.nextSetBit(0)-1));
+				}else if (event.segsRight.get(0)){
+					return Math.log(intervals.plasmidTransferRate.getArrayValue(event.segsLeft.nextSetBit(0)-1));
+				}else {
+					double rate = intervals.plasmidTransferRate.getArrayValue(event.segsLeft.nextSetBit(0)-1) +
+							intervals.plasmidTransferRate.getArrayValue(event.segsRight.nextSetBit(0)-1);
+					return Math.log(rate/2);
+				}
+
 			}
 
 		}else {
-			return Math.log(intervals.plasmidTransferRate.getArrayValue());
+			if (event.time>lociMRCA) {
+				return Math.log(intervals.plasmidTransferRate.getArrayValue()*redFactorInput.get());
+			}else {
+				return Math.log(intervals.plasmidTransferRate.getArrayValue());
+			}
 		}
 	}
 
@@ -102,12 +140,23 @@ public class CoalescentWithPlasmids extends PlasmidNetworkDistribution {
 		return Math.log(1.0/populationFunction.getPopSize(event.time));
 	}
 
-	private double intervalContribution(NetworkEvent prevEvent, NetworkEvent nextEvent) {
+	private double intervalContribution(NetworkEvent prevEvent, NetworkEvent nextEvent, double lociMRCA) {
 
         double result = 0.0;
+        
+        double scale_factor = 1.0;
+        
+        if (nextEvent.time>lociMRCA) {   
+        	if (prevEvent.time<lociMRCA) 
+            	scale_factor = ((lociMRCA-prevEvent.time) +  redFactorInput.get() * (nextEvent.time-lociMRCA))/(nextEvent.time-prevEvent.time);
+        	else
+        		scale_factor = redFactorInput.get();
+        }	        
+
+        
 
         result += -prevEvent.totalReassortmentObsProb
-                * (nextEvent.time - prevEvent.time);
+                * (nextEvent.time - prevEvent.time) * scale_factor;
 
 		result += -0.5*prevEvent.lineages*(prevEvent.lineages-1)
                 * populationFunction.getIntegral(prevEvent.time, nextEvent.time);
@@ -115,13 +164,11 @@ public class CoalescentWithPlasmids extends PlasmidNetworkDistribution {
 		return result;
 	}
 	
-//    @Override
-//    protected boolean requiresRecalculation() {    	   	
-//    	if (((CalculationNode) populationFunction).isDirtyCalculation())
-//    		return true;
-//    	
-//        return super.requiresRecalculation();
-//    }
-    
-
+    @Override
+    protected boolean requiresRecalculation() {    	   	
+    	if (((CalculationNode) populationFunction).isDirtyCalculation())
+    		return true;
+    	
+        return super.requiresRecalculation();
+    }	
 }

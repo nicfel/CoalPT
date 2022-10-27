@@ -27,32 +27,30 @@ import coalre.networkannotator.ReassortmentLogReader;
 import javax.swing.*;
 import javax.swing.border.EtchedBorder;
 import java.awt.*;
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
  * A rewrite of TreeAnnotator that outputs how often reassortment events happen on trunk branches vs. other branches 
  * @author Nicola Felix Müller <nicola.felix.mueller@gmail.com>
  */
-public class PlasmidLossCount extends ReassortmentAnnotator {
+public class PlasmidLossRate extends ReassortmentAnnotator {
 
-    private enum TrunkDefinition { MostRecentSample, TipDistance }
-    
-    List<NetworkNode> allTrunkNodes;
-    List<Double> leaveDistance;
-    List<Boolean> isTrunkNode;
 
     private static class NetworkAnnotatorOptions {
         File inFile;
-        File outFile = new File("reassortment_distances.txt");
+        File outFile = new File("losscount.txt");
         double burninPercentage = 10.0;
-        TrunkDefinition trunkDefinition = TrunkDefinition.MostRecentSample;
         double minTipDistance = 2.0;
         int[] removeSegments = new int[0];
 
@@ -63,17 +61,16 @@ public class PlasmidLossCount extends ReassortmentAnnotator {
                     "Input file: " + inFile + "\n" +
                     "Output file: " + outFile + "\n" +
                     "Burn-in percentage: " + burninPercentage + "%\n" +
-                    "Definition of the trunk: " + trunkDefinition + "\n" +
             		"minimal distance to a tip to be considered trunk\n" + 
                     "(ignored in MostRecentSample Case): " + minTipDistance;
         }
     }
 
-    public PlasmidLossCount(NetworkAnnotatorOptions options) throws IOException {
+    public PlasmidLossRate(NetworkAnnotatorOptions options) throws IOException {
 
         // Display options:
         System.out.println(options + "\n");
-
+                
         // Initialise reader
         ReassortmentLogReader logReader = new ReassortmentLogReader(options.inFile,
                 options.burninPercentage);
@@ -86,193 +83,42 @@ public class PlasmidLossCount extends ReassortmentAnnotator {
 
 	      System.out.println("\nWriting output to " + options.outFile.getName()
 	      + "...");
-        
+	      
+
+        int counter=1;
         // compute the pairwise reassortment distances 
         try (PrintStream ps = new PrintStream(options.outFile)) {
-	        for (Network network : logReader){	        	
-	        	pruneNetwork(network, options.removeSegments);
-	        	if (options.trunkDefinition == TrunkDefinition.MostRecentSample)
-	        		computeTrunkReassortment(network, ps);
-	        	else
-	        		computeTrunkReassortmentLeaveDist(network, ps, options.minTipDistance);
+          	ps.print("number\tsegment\tnrevents\tlength\n");
+
+	        for (Network network : logReader){	
 	        	
-	        	ps.print("\n");
+	        	List<NetworkEdge> edges=network.getEdges().stream()
+        								.filter(e -> !e.isRootEdge())
+	                    				.filter(e -> e.parentNode.isCoalescence())
+	                    				.collect(Collectors.toList());
+	        	
+	        	for (int i = 1; i < network.getSegmentCount();i++) {
+	        		int events = 0;
+	        		double length = 0.0;
+		        	for (NetworkEdge edge : edges) {	
+		        		if (!edge.hasSegments.get(i) && edge.parentNode.getParentEdges().get(0).hasSegments.get(i))
+		        			events++;
+		        		
+		        		if (edge.hasSegments.get(i))
+		        			length+=edge.getLength();
+		        	}		        	
+        			ps.print(counter +"\t" + i + "\t"+ events + "\t"+ length+ "\n");
+
+	        	}
+	        	
+	        	counter=counter+1;
 	        }
 	        ps.close();
         }
         System.out.println("\nDone!");
     }
     
-    /**
-     * gets how many reticulation events happen on the trunk vs. not on the trunk
-     * The trunk is defined as any edge of the network which is between a sample with height 0 and the root
-     * @param network
-     * @param ps
-     */
-    private void computeTrunkReassortment(Network network, PrintStream ps){    	
-        
-        // get the length of the network        
-        List<NetworkEdge> allEdges = network.getEdges().stream()
-                .filter(e -> !e.isRootEdge())
-                .collect(Collectors.toList());
-        
-        double fullLength = 0.0;
-		for (NetworkEdge edge:allEdges)
-			fullLength += edge.getLength();
-		
-		
-        // compute which nodes are on the trunk of the network defined as any connection between
-        // the root and the most recent sampled individual. To do so, get all zero height edges
-        List<NetworkEdge> zeroHeightEdges = network.getEdges().stream()
-                .filter(e -> e.isLeafEdge())
-                .filter(e -> e.childNode.getHeight()<0.0000001)
-                .collect(Collectors.toList());
-        
-		List<NetworkNode> allTrunkNodes = new ArrayList<>();
-		
-		if(zeroHeightEdges.size()==0)
-			throw new IllegalArgumentException("no leaf node with 0 height found");
-        
-    	for (NetworkEdge zeroEdge : zeroHeightEdges){
-    		this.allTrunkNodes = new ArrayList<>();
-			getAllAncestralEdges(zeroEdge.childNode);
-			this.allTrunkNodes.removeAll(allTrunkNodes);
-			allTrunkNodes.addAll(this.allTrunkNodes);
-    	}
-    	
-    	// calculate how many reassortment events are on the trunk and how many aren't       
-        int onTrunk = allTrunkNodes.stream()
-                .filter(e -> e.isReassortment())
-                .collect(Collectors.toList()).size();
-        
-        int offTrunk = allEdges.stream()
-                .filter(e -> !e.isRootEdge())
-                .filter(e -> e.parentNode.isReassortment())
-                .collect(Collectors.toList()).size() - onTrunk;
-        
-       	// calculate the length of the trunk
-        double trunkLength = 0.0;
-        for (NetworkNode node : allTrunkNodes){
-        	for (NetworkEdge edge:node.getParentEdges())
-        		if (!edge.isRootEdge())
-        			trunkLength += edge.getLength();
-        }
-        
-
-		ps.print(onTrunk + "\t" + offTrunk + "\t" + trunkLength + "\t" + (fullLength-trunkLength));
-
-
-       
-
-    }
     
-    private void getAllAncestralEdges(NetworkNode node){
-    	if (allTrunkNodes.indexOf(node)!=-1)
-    		return;
-    	
-    	allTrunkNodes.add(node);
-		
-    	
-    	for (NetworkEdge parentEdge : node.getParentEdges()){
-    		if (parentEdge.isRootEdge()){
-    			return;
-    		}else{
-    			getAllAncestralEdges(parentEdge.parentNode);   			
-    		}
-			
-		}
-    }
-        
-    /**
-     * gets how many reticulation events happen on the trunk vs. not on the trunk
-     * The trunk is define as any edge on the network that has descendents that are more than minTipDistance 
-     * away from that node
-     * @param network
-     * @param ps
-     * @param minTipDistance
-     */
-    private void computeTrunkReassortmentLeaveDist(Network network, PrintStream ps, double minTipDistance){    	
-        
-        // get the length of the network        
-        List<NetworkEdge> allEdges = network.getEdges().stream()
-                .filter(e -> !e.isRootEdge())
-                .collect(Collectors.toList());
-        
-        double fullLength = 0.0;
-		for (NetworkEdge edge:allEdges)
-			fullLength += edge.getLength();
-		
-		
-        // compute which nodes are on the trunk of the network defined as any connection between
-        // the root and the most recent sampled individual. To do so, get all zero height edges
-        List<NetworkEdge> zeroHeightEdges = network.getEdges().stream()
-                .filter(e -> e.isLeafEdge())
-                .collect(Collectors.toList());
-        
-		allTrunkNodes = new ArrayList<>();
-		leaveDistance = new ArrayList<>();
-		
-		if(zeroHeightEdges.size()==0)
-			throw new IllegalArgumentException("no leaf node with 0 height found");
-		
-
-		for (NetworkEdge zeroEdge : zeroHeightEdges){
-    		double dist = 0.0;
-			getAllAncestralEdgesLeaveDist(zeroEdge.childNode, dist, minTipDistance);
-    	}
-		
-		// drop every node in allTrunkNodes that is less far away from a leave than some threshold
-		for (int i = allTrunkNodes.size()-1; i>=0; i--){
-			if (leaveDistance.get(i)<minTipDistance){
-				allTrunkNodes.remove(i);
-			} 
-		}
-    	
-    	// calculate how many reassortment events are on the trunk and how many aren't       
-        int onTrunk = allTrunkNodes.stream()
-                .filter(e -> e.isReassortment())
-                .collect(Collectors.toList()).size();
-        
-        int offTrunk = allEdges.stream()
-                .filter(e -> !e.isRootEdge())
-                .filter(e -> e.parentNode.isReassortment())
-                .collect(Collectors.toList()).size() - onTrunk;
-        
-       	// calculate the length of the trunk
-        double trunkLength = 0.0;
-        for (NetworkNode node : allTrunkNodes){
-        	for (NetworkEdge edge:node.getParentEdges())
-        		if (!edge.isRootEdge())
-        			trunkLength += edge.getLength();
-        }
-
-        ps.print(onTrunk + "\t" + offTrunk + "\t" + trunkLength + "\t" + (fullLength-trunkLength));
-
-    }
-    
-    private void getAllAncestralEdgesLeaveDist(NetworkNode node, double dist, double threshold){
-    	int index = allTrunkNodes.indexOf(node);
-    	if (index==-1){
-    		allTrunkNodes.add(node);
-    		leaveDistance.add(dist);
-    	}else{
-    		if (leaveDistance.get(index)>dist)
-    			return;
-    		else if (leaveDistance.get(index) > threshold)
-    			return;
-			else
-    			leaveDistance.set(index, dist);
-    	}
-    	
-    	for (NetworkEdge parentEdge : node.getParentEdges()){
-    		if (parentEdge.isRootEdge()){
-    			return;
-    		}else{
-    			getAllAncestralEdgesLeaveDist(parentEdge.parentNode, dist+parentEdge.getLength(), threshold);   			
-    		}			
-		}
-    }
-        
     /**
      * Use a GUI to retrieve ACGAnnotator options.
      *
@@ -314,8 +160,6 @@ public class PlasmidLossCount extends ReassortmentAnnotator {
         burninSlider.setPaintLabels(true);
         burninSlider.setSnapToTicks(true);
 
-        JComboBox<TrunkDefinition> heightMethodCombo = new JComboBox<>(TrunkDefinition.values());
-
 //        JSlider thresholdSlider = new JSlider(JSlider.HORIZONTAL,
 //                0, 100, (int)(options.convSupportThresh));
 //        thresholdSlider.setMajorTickSpacing(50);
@@ -347,7 +191,6 @@ public class PlasmidLossCount extends ReassortmentAnnotator {
                         .addComponent(inFilename)
                         .addComponent(outFilename)
                         .addComponent(burninSlider)
-                        .addComponent(heightMethodCombo)
 //                        .addComponent(thresholdSlider)
                         .addComponent(minTipDistance))
                 .addGroup(layout.createParallelGroup(GroupLayout.Alignment.LEADING, false)
@@ -377,11 +220,7 @@ public class PlasmidLossCount extends ReassortmentAnnotator {
                                 GroupLayout.DEFAULT_SIZE,
                                 GroupLayout.PREFERRED_SIZE))
                 .addGroup(layout.createParallelGroup()
-                        .addComponent(trunkDefinitionLabel)
-                        .addComponent(heightMethodCombo,
-                                GroupLayout.PREFERRED_SIZE,
-                                GroupLayout.DEFAULT_SIZE,
-                                GroupLayout.PREFERRED_SIZE))
+                        .addComponent(trunkDefinitionLabel))
                 .addGroup(layout.createParallelGroup()
                         .addComponent(minTipDistance))
                 );
@@ -394,7 +233,6 @@ public class PlasmidLossCount extends ReassortmentAnnotator {
         JButton runButton = new JButton("Analyze");
         runButton.addActionListener((e) -> {
             options.burninPercentage = burninSlider.getValue();
-            options.trunkDefinition = (TrunkDefinition)heightMethodCombo.getSelectedItem();
             options.minTipDistance = Double.parseDouble(minTipDistance.getText());
             dialog.setVisible(false);
         });
@@ -559,27 +397,6 @@ public class PlasmidLossCount extends ReassortmentAnnotator {
 
                     i += 1;
                     break;
-                case "-trunkDefinition":
-                    if (args.length<=i+1) {
-                        printUsageAndError("-trunkDefinition must be either mostRecentSample or minTipDistance.");
-                    }
-
-                    try {
-                    	if (args[i + 1].equals("mostRecentSample"))
-                    		options.trunkDefinition = TrunkDefinition.MostRecentSample;
-                    	else if (args[i + 1].equals("minTipDistance"))
-                    		options.trunkDefinition = TrunkDefinition.TipDistance;
-                    	else
-                    		throw new NumberFormatException();
-
-                    } catch (NumberFormatException e) {
-                        printUsageAndError("trunkDefinition must be either mostRecentSample or minTipDistance.");
-                    }
-
-                    i += 1;
-                    break;
-
-
                 case "-minTipDistance":
                     if (args.length<=i+1) {
                         printUsageAndError("-minTipDistance must be followed by a number.");
@@ -665,7 +482,7 @@ public class PlasmidLossCount extends ReassortmentAnnotator {
 
         // Run ACGAnnotator
         try {
-            new TrunkReassortment(options);
+            new PlasmidLossRate(options);
 
         } catch (Exception e) {
             if (args.length == 0) {

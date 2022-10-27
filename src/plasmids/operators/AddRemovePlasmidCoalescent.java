@@ -39,8 +39,7 @@ public class AddRemovePlasmidCoalescent extends DivertPlasmidOperator {
 
     double addRecombination() {
         double logHR = 0.0;
-//        System.out.println(network);
-
+        
         List<NetworkEdge> networkEdges = new ArrayList<>(network.getEdges());
 
         List<NetworkEdge> possibleSourceEdges = networkEdges.stream()
@@ -54,9 +53,7 @@ public class AddRemovePlasmidCoalescent extends DivertPlasmidOperator {
         logHR -= Math.log(1.0/(double)possibleSourceEdges.size())
                 + Math.log(1.0/sourceEdge.getLength());
         
-        coalescentDistr.intervals.eventListDirty = true;
-        
-    	// Calculate tree intervals
+    	// get network intervals
     	List<NetworkEvent> networkEventList = coalescentDistr.intervals.getNetworkEventList();
 
     	double currTime = sourceTime;
@@ -65,7 +62,6 @@ public class AddRemovePlasmidCoalescent extends DivertPlasmidOperator {
     	
     	for (NetworkEvent event : networkEventList) {
     		if (event.time>currTime) {
-//    			System.out.println(currTime);
     			// sample next possible attachment time
     			double rate = 0.5*prevEvent.lineages;
                 double currentTransformedTime = coalescentDistr.populationFunction.getIntensity(currTime);
@@ -73,12 +69,10 @@ public class AddRemovePlasmidCoalescent extends DivertPlasmidOperator {
                 double timeToNextCoal = coalescentDistr.populationFunction.getInverseIntensity(
                         transformedTimeToNextCoal + currentTransformedTime);
                 
-//                System.out.println(currTime + " " + timeToNextCoal + " " + currentTransformedTime);
-//                System.exit(0);
-
-
+                if (timeToNextCoal<currTime) {
+                	return Double.NEGATIVE_INFINITY;
+                }
                 
-//                System.out.println(coalescentDistr.populationFunction.getPopSize(attachmentTime));
                	attachmentTime = timeToNextCoal;
                 if (timeToNextCoal < event.time) {
                 	logHR -= -rate * coalescentDistr.populationFunction.getIntegral(currTime, attachmentTime) +
@@ -96,10 +90,6 @@ public class AddRemovePlasmidCoalescent extends DivertPlasmidOperator {
     		double transformedTimeToNextCoal = Randomizer.nextExponential(0.5);
             attachmentTime = coalescentDistr.populationFunction.getInverseIntensity(
                     transformedTimeToNextCoal + currentTransformedTime);
-            
-            
-//            System.out.println(currTime + " x " + attachmentTime + " " + currentTransformedTime);
-//            System.exit(0);
 
             
             logHR -= -0.5 * coalescentDistr.populationFunction.getIntegral(network.getRootEdge().childNode.getHeight(), attachmentTime);
@@ -135,15 +125,13 @@ public class AddRemovePlasmidCoalescent extends DivertPlasmidOperator {
         // HR contribution for reverse move
         int nRemovableEdges = (int) network.getEdges().stream()
                 .filter(e -> !e.isRootEdge())
-                .filter(e -> e.hasSegments.cardinality()==1)
-                .filter(e -> !e.hasSegments.get(0))
                 .filter(e -> e.childNode.isReassortment())
                 .filter(e -> e.parentNode.isCoalescence())
+                .filter(e -> e.hasSegments.cardinality()>0)
+                .filter(e -> e.childNode.getChildEdges().get(0).hasSegments.cardinality()>e.hasSegments.cardinality())
                 .count();
         
         logHR += Math.log(1.0/nRemovableEdges);
-//        System.out.println(network);
-//        System.exit(0);
         return logHR;
     }
     
@@ -210,10 +198,10 @@ public class AddRemovePlasmidCoalescent extends DivertPlasmidOperator {
         
         List<NetworkEdge> removableEdges = network.getEdges().stream()
                 .filter(e -> !e.isRootEdge())
-                .filter(e -> e.hasSegments.cardinality()==1)
-                .filter(e -> !e.hasSegments.get(0))
                 .filter(e -> e.childNode.isReassortment())
                 .filter(e -> e.parentNode.isCoalescence())
+                .filter(e -> e.hasSegments.cardinality()>0)
+                .filter(e -> e.childNode.getChildEdges().get(0).hasSegments.cardinality()>e.hasSegments.cardinality())
                 .collect(Collectors.toList());
         
         
@@ -232,7 +220,7 @@ public class AddRemovePlasmidCoalescent extends DivertPlasmidOperator {
         double destTime = edgeToRemove.parentNode.getHeight();
         
         
-        coalescentDistr.intervals.eventListDirty = true;
+//        coalescentDistr.intervals.eventListDirty = true;
         
     	// Calculate tree intervals
     	List<NetworkEvent> networkEventList = coalescentDistr.intervals.getNetworkEventList();
@@ -327,7 +315,6 @@ public class AddRemovePlasmidCoalescent extends DivertPlasmidOperator {
             NetworkNode secondNodeToRemoveParent = secondNodeToRemoveParentEdge.parentNode;
             secondNodeToRemoveParent.removeChildEdge(secondNodeToRemoveParentEdge);
             secondNodeToRemove.removeParentEdge(secondNodeToRemoveParentEdge);
-
             secondNodeToRemoveParent.addChildEdge(secondEdgeToExtend);
         }
 
@@ -336,29 +323,5 @@ public class AddRemovePlasmidCoalescent extends DivertPlasmidOperator {
 
         return logHR;
     }
-
-//    /**
-//     * automatic parameter tuning *
-//     */
-//    @Override
-//    public void optimize(final double logAlpha) {
-//        if (optimiseInput.get()) {
-//            double delta = calcDelta(logAlpha);
-//            delta += Math.log(alpha);
-//            final double f = Math.exp(delta);
-//            if( alpha > 0 ) {
-//                final RecombinationNetwork network = networkInput.get();
-//                final double h = network.getRootEdge().childNode.getHeight();
-//                final double k = Math.log(network.getLeafNodes().size()) / Math.log(2);
-//                final double lim = (h / k) * alpha;
-//                if( f <= lim ) {
-//                	alpha = f;
-//                }
-//            } else {
-//            	alpha = f;
-//            }
-//        }
-//    }
-
     
 }

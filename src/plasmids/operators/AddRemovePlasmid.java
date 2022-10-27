@@ -91,10 +91,10 @@ public class AddRemovePlasmid extends DivertPlasmidOperator {
         // HR contribution for reverse move
         int nRemovableEdges = (int) network.getEdges().stream()
                 .filter(e -> !e.isRootEdge())
-                .filter(e -> e.hasSegments.cardinality()==1)
-                .filter(e -> !e.hasSegments.get(0))
                 .filter(e -> e.childNode.isReassortment())
                 .filter(e -> e.parentNode.isCoalescence())
+                .filter(e -> e.hasSegments.cardinality()>0)
+                .filter(e -> e.childNode.getChildEdges().get(0).hasSegments.cardinality()>e.hasSegments.cardinality())
                 .count();
         
        
@@ -154,22 +154,8 @@ public class AddRemovePlasmid extends DivertPlasmidOperator {
 
         // Choose segments to divert to new edge
         BitSet segsToDivert = getRandomPlasmid(sourceEdge.hasSegments);
-        
-        
-//        System.out.println(network);
-        
         logHR -= getLogUnconditionedPlasmidProb(sourceEdge.hasSegments);
-        
-
-
-        
-        logHR -= addSegmentsToAncestors(reassortmentEdge, segsToDivert);
-
-        
-//        if (logHR==Double.NEGATIVE_INFINITY)
-
-//        System.out.println(network);
-        
+        logHR -= addSegmentsToAncestors(reassortmentEdge, segsToDivert);       
         logHR += removeSegmentsFromAncestors(newEdge1, segsToDivert);
 
 
@@ -181,10 +167,10 @@ public class AddRemovePlasmid extends DivertPlasmidOperator {
 
         List<NetworkEdge> removableEdges = network.getEdges().stream()
                 .filter(e -> !e.isRootEdge())
-                .filter(e -> e.hasSegments.cardinality()==1)
-                .filter(e -> !e.hasSegments.get(0))
                 .filter(e -> e.childNode.isReassortment())
                 .filter(e -> e.parentNode.isCoalescence())
+                .filter(e -> e.hasSegments.cardinality()>0)
+                .filter(e -> e.childNode.getChildEdges().get(0).hasSegments.cardinality()>e.hasSegments.cardinality())
                 .collect(Collectors.toList());
 
         if (removableEdges.isEmpty())
@@ -192,7 +178,7 @@ public class AddRemovePlasmid extends DivertPlasmidOperator {
 
         NetworkEdge edgeToRemove = removableEdges.get(Randomizer.nextInt(removableEdges.size()));
         logHR -= Math.log(1.0/(removableEdges.size()));
-
+        
         double sourceTime = edgeToRemove.childNode.getHeight();
         NetworkEdge sourceEdge = edgeToRemove.childNode.getChildEdges().get(0);
         NetworkEdge destEdge = getSisterEdge(edgeToRemove);
@@ -244,23 +230,10 @@ public class AddRemovePlasmid extends DivertPlasmidOperator {
 
         // Divert segments away from chosen edge
         BitSet segsToDivert = (BitSet) edgeToRemove.hasSegments.clone();
-//        System.out.println("");
-//        System.out.println(network);
 
-        logHR -= addSegmentsToAncestors(edgeToRemoveSpouse, segsToDivert);
-//        System.out.println(logHR);
-
-        
+        logHR -= addSegmentsToAncestors(edgeToRemoveSpouse, segsToDivert);        
         logHR += removeSegmentsFromAncestors(edgeToRemove, segsToDivert);
-//        System.out.println(logHR);
-//        if (logHR<0)
-//        	stop++;
-
         logHR += getLogUnconditionedPlasmidProb(edgeToRemoveSpouse.hasSegments);
-//        System.out.println(logHR);
-        	
-        
-
         
         // Remove edge and associated nodes
         NetworkEdge edgeToExtend = nodeToRemove.getChildEdges().get(0);
@@ -291,15 +264,9 @@ public class AddRemovePlasmid extends DivertPlasmidOperator {
         if (!networkTerminatesAtMRCA())
             return Double.NEGATIVE_INFINITY;
         
-        if (logHR==Double.NEGATIVE_INFINITY) {
-            System.out.println(network);
-            System.exit(0);
-        }
-
-//        System.out.println(network);
-//        if (stop>10)
-//        	System.exit(0);
-
+//        if (logHR==Double.NEGATIVE_INFINITY) {
+//            System.out.println(network);
+//        }
 
         return logHR;
     }

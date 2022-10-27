@@ -38,6 +38,9 @@ public class PlasmidNetworkIntervals extends CalculationNode {
     Function plasmidTransferRate;
     
     boolean hasMultipleRates = false;
+    
+    double maxSegHeight;
+    double storedMaxSegHeight;
 
     @Override
     public void initAndValidate() {
@@ -61,6 +64,8 @@ public class PlasmidNetworkIntervals extends CalculationNode {
     void update() {
         if (!eventListDirty)
             return;
+        
+        maxSegHeight = -1;
         
         networkEventList = network.getNodes().stream().map(n -> {
             NetworkEvent event = new NetworkEvent();
@@ -105,18 +110,13 @@ public class PlasmidNetworkIntervals extends CalculationNode {
                     event.segsLeft = (BitSet) event.node.getParentEdges().get(0).hasSegments.clone();
                     event.segsRight = (BitSet) event.node.getParentEdges().get(1).hasSegments.clone();
                     
-//                    if (event.segsLeft.cardinality()==0 || event.segsRight.cardinality()==0) {
-//                    	System.out.println(event.node.getChildEdges().get(0).childNode.getTaxonLabel());
-//
-//                    	System.out.println(event.node.getChildEdges().get(0).childNode.getHeight());
-//                    	System.out.println(event.node.getChildEdges().get(0).parentNode.getHeight());
-//                    	System.out.println(networkInput.get());
-//                    	System.exit(0);
-//                    }
                     break;
 
                 case COALESCENCE:
                     lineages -= 1;
+                    if (event.node.getChildEdges().get(0).hasSegments.intersects(event.node.getChildEdges().get(1).hasSegments))
+                    	if (event.node.getHeight()>maxSegHeight)
+                    		maxSegHeight = event.node.getHeight();
                     
                     totalTransferObsProb -= getObsProb(event.node.getChildEdges().get(0));
                     totalTransferObsProb -= getObsProb(event.node.getChildEdges().get(1));
@@ -132,6 +132,9 @@ public class PlasmidNetworkIntervals extends CalculationNode {
     }
     
     private double getObsProb(NetworkEdge edge) {
+    	if (edge.hasSegments.cardinality()==1)
+    		return 0;
+
     	if (hasMultipleRates) {
     		double prob = 0;
 	    	for (int i=1; i < edge.hasSegments.length(); i++) {
@@ -142,8 +145,6 @@ public class PlasmidNetworkIntervals extends CalculationNode {
 	    	return prob;
     	}
     	
-    	if (edge.hasSegments.cardinality()==1)
-    		return 0;
     	
         int nrplasmids = edge.hasSegments.cardinality();
         nrplasmids -= edge.hasSegments.get(0) ? 1 : 0;
@@ -164,6 +165,10 @@ public class PlasmidNetworkIntervals extends CalculationNode {
         List<NetworkEvent> tmp = networkEventList;
         networkEventList = storedNetworkEventList;
         storedNetworkEventList = tmp;
+        
+        double tmp2 = maxSegHeight;
+        maxSegHeight = storedMaxSegHeight;
+        storedMaxSegHeight = tmp2;
 
         super.restore();
     }
@@ -172,7 +177,13 @@ public class PlasmidNetworkIntervals extends CalculationNode {
     protected void store() {
         storedNetworkEventList.clear();
         storedNetworkEventList.addAll(networkEventList);
+        
+        storedMaxSegHeight=maxSegHeight;
 
         super.store();
     }
+
+	public double getMaxSegmentTreeHeight() {
+		return maxSegHeight;
+	}
 }

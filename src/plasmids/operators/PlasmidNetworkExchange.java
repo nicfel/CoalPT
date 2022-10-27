@@ -139,7 +139,7 @@ public class PlasmidNetworkExchange extends DivertPlasmidOperator {
 		
 		final int nPossibleEdges = possibleEdges.size();
 		logHR -= Math.log(1.0/(double)nPossibleEdges);
-
+		
 		final NetworkEdge iEdge = possibleEdges.
 				get(Randomizer.nextInt(possibleEdges.size()));
 		final NetworkNode i = iEdge.childNode;
@@ -150,8 +150,8 @@ public class PlasmidNetworkExchange extends DivertPlasmidOperator {
 			jEdge = possibleEdges.
 					get(Randomizer.nextInt(possibleEdges.size()));
 		}
+		
 		final NetworkNode j = jEdge.childNode;
-
 		final NetworkNode p = iEdge.parentNode;
 		final NetworkNode jP = jEdge.parentNode;
 

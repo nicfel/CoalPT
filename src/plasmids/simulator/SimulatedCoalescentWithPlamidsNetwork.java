@@ -51,9 +51,7 @@ public class SimulatedCoalescentWithPlamidsNetwork extends Network {
 
     public Input<String> fileNameInput = new Input<>("fileName",
             "Name of file to write simulated network to.");
-    
-    final public Input<List<MRCAPrior>> calibrationsInput = new Input<>("constraint", "specifies (monophyletic or height distribution) constraints on internal nodes", new ArrayList<>());
-    
+        
 
     private PopulationFunction populationFunction;
     private RealParameter plasmidTransferRate;
@@ -68,7 +66,7 @@ public class SimulatedCoalescentWithPlamidsNetwork extends Network {
         }else {
         	nPlasmids = treesInput.get().size()-1;
         }       
-        
+               
         segmentCount = nPlasmids+1;
 
         populationFunction = populationFunctionInput.get();
@@ -115,7 +113,7 @@ public class SimulatedCoalescentWithPlamidsNetwork extends Network {
                 sampleNode.setHeight(0.0);
 
             sampleNodes.add(sampleNode);
-        }
+        }        
 
         // Perform network simulation:
         simulateNetwork(sampleNodes);
@@ -177,6 +175,7 @@ public class SimulatedCoalescentWithPlamidsNetwork extends Network {
 
             double currentTransformedTime = populationFunction.getIntensity(currentTime);
             double transformedTimeToNextCoal = k>=2 ? Randomizer.nextExponential(0.5*k*(k-1)) : Double.POSITIVE_INFINITY;
+                        
             double timeToNextCoal = populationFunction.getInverseIntensity(
                     transformedTimeToNextCoal + currentTransformedTime) - currentTime;
             
@@ -219,7 +218,7 @@ public class SimulatedCoalescentWithPlamidsNetwork extends Network {
         // Create corresponding lineage
         BitSet hasSegs = new BitSet();
         
-        if (plasmidTaxonSetInput.get()!=null) {
+        if (plasmidTaxonSetInput.get().size()>0) {
         	hasSegs.set(0, true);
             int c = 1;
             for (TaxonSet t : plasmidTaxonSetInput.get()) {
@@ -233,7 +232,6 @@ public class SimulatedCoalescentWithPlamidsNetwork extends Network {
             }          	
         }else {
             hasSegs.set(0, nPlasmids+1);
-
         }
         
         NetworkEdge lineage = new NetworkEdge(null, n, hasSegs);

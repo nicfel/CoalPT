@@ -139,7 +139,6 @@ public class DivertPlasmidOperator extends EmptyEdgesNetworkOperator {
 
         }
         
-        
         return logP;
     }
 
@@ -241,7 +240,6 @@ public class DivertPlasmidOperator extends EmptyEdgesNetworkOperator {
         } else {
             logP += addSegmentsToAncestors(edge.parentNode.getParentEdges().get(0), segsToAdd);
         }
-
         return logP;
     }
     
@@ -256,7 +254,16 @@ public class DivertPlasmidOperator extends EmptyEdgesNetworkOperator {
         	index = Randomizer.nextInt(network.getSegmentCount()-1)+1;
         }while (!sourceSegments.get(index));
         
-        destSegments.set(index);
+        if (Randomizer.nextBoolean()) {
+            destSegments.set(index);
+        }else {
+        	for (int i = 0; i < sourceSegments.length(); i++) {
+        		if (i!=index && sourceSegments.get(i))
+        			destSegments.set(i);
+        	}   
+        }
+        		
+        
 
         return destSegments;
     }
@@ -266,7 +273,7 @@ public class DivertPlasmidOperator extends EmptyEdgesNetworkOperator {
         int nrPlasmids = sourceSegments.cardinality();
         nrPlasmids -= sourceSegments.get(0) ? 1 : 0;
         
-        return Math.log(1.0/nrPlasmids);
+        return Math.log(1.0/nrPlasmids * 0.5);
     }
     
     

@@ -1,34 +1,28 @@
 package plasmids.operators;
 
+import beast.core.Function;
 import beast.core.Input;
-import beast.core.Input.Validate;
-import beast.core.parameter.RealParameter;
 import beast.evolution.tree.coalescent.PopulationFunction;
-import beast.util.Package;
 import beast.util.Randomizer;
-import coalre.network.Network;
 import coalre.network.NetworkEdge;
 import coalre.network.NetworkNode;
 import coalre.operators.NetworkOperator;
+import plasmids.distribution.CoalescentWithPlasmids;
 
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.PrintStream;
 import java.util.*;
 import java.util.stream.Collectors;
 
 public class GibbsOperatorAbovePlasmidRoots extends NetworkOperator {
 
-    public Input<RealParameter> plasmidTransferRateInput = new Input<>("plasmidTransferRate",
-            "Rate of jumping of an individual plasmid", Validate.REQUIRED);
-
-    public Input<PopulationFunction> populationFunctionInput = new Input<>("populationModel",
-            "Population model to use.", Validate.REQUIRED);
+    public Input<CoalescentWithPlasmids> coalescentDistrInput = new Input<>("coalescentWithPlasmids",
+            "Mean of exponential used for choosing root attachment times.",
+            Input.Validate.REQUIRED);
 
     private int nSegments;
     
     private PopulationFunction populationFunction;
-    private RealParameter plasmidTransferRate;
+    private Function plasmidTransferRate;
+    CoalescentWithPlasmids coalp;
     
     private int nPlasmids;
 
@@ -37,10 +31,13 @@ public class GibbsOperatorAbovePlasmidRoots extends NetworkOperator {
     public void initAndValidate() {
         super.initAndValidate();
         
+        coalp = coalescentDistrInput.get();
+        
     	nSegments = segmentTreesInput.get().size();
     	
-        populationFunction = populationFunctionInput.get();
-        plasmidTransferRate = plasmidTransferRateInput.get();  
+    	
+        populationFunction = coalp.populationFunctionInput.get();
+        plasmidTransferRate = coalp.intervals.plasmidTransferRateInput.get();  
         
         nPlasmids = network.getSegmentCount()-1;
         
@@ -57,6 +54,12 @@ public class GibbsOperatorAbovePlasmidRoots extends NetworkOperator {
     	
     	// get the place where to cut
     	double maxHeight = getMaxSegmentMRCA();
+    	
+    	// get the time when to reduce the rate of transfer
+    	// get the mrca of all loci trees
+    	// get the mrca of all loci trees
+    	double maxHeightTransfer = coalp.conditionOnCoalescentEventsInput.get() ? coalp.intervals.getMaxSegmentTreeHeight()*coalp.maxHeightRatioInput.get() : Double.POSITIVE_INFINITY;
+
 
     	// get all network edges 
         List<NetworkEdge> networkEdges = new ArrayList<>(network.getEdges());
@@ -83,10 +86,8 @@ public class GibbsOperatorAbovePlasmidRoots extends NetworkOperator {
             double transformedTimeToNextCoal = k>=2 ? Randomizer.nextExponential(0.5*k*(k-1)) : Double.POSITIVE_INFINITY;
             double timeToNextCoal = populationFunction.getInverseIntensity(
                     transformedTimeToNextCoal + currentTransformedTime) - currentTime;
-
             
             double totPlasmidRate = 0.0;
-            
             
             for (int i=0; i<nPlasmids;i++) {
             	if (plasmidTransferRate.getDimension()==1)
@@ -104,7 +105,7 @@ public class GibbsOperatorAbovePlasmidRoots extends NetworkOperator {
                 if (timeUntilNextEvent == timeToNextCoal)
                     coalesce(currentTime, startingEdges);
                 else
-                	transfer(currentTime, startingEdges);
+                	transfer(currentTime, startingEdges, maxHeightTransfer);
             }
 
         }
@@ -161,11 +162,22 @@ public class GibbsOperatorAbovePlasmidRoots extends NetworkOperator {
     
 
 
-    private void transfer(double reassortmentTime, List<NetworkEdge> extantLineages) {
+    private void transfer(double reassortmentTime, List<NetworkEdge> extantLineages, double maxHeightTransfer) {
         NetworkEdge lineage = extantLineages.get(Randomizer.nextInt(extantLineages.size()));
 
+        if (reassortmentTime>maxHeightTransfer)
+        	if (Randomizer.nextDouble()>coalp.redFactorInput.get())
+        		return;
+        
+        
+        
         BitSet hasSegs_left = (BitSet) lineage.hasSegments.clone();
         BitSet hasSegs_right = new BitSet();
+        
+        
+        
+        	
+        
         
         double[] cumsum = new double[nPlasmids];
 		cumsum[0]=plasmidTransferRate.getArrayValue(0);
