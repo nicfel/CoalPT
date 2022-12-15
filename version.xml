@@ -1,0 +1,4 @@
+<addon name="CoalPT" version="0.0.1">
+  <depends on="BEAST" atleast="2.5.0"/>
+  <depends on="CoalRe" atleast="0.0.7"/>
+</addon>

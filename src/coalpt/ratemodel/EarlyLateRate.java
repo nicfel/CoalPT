@@ -1,11 +1,11 @@
-package plasmids.ratemodel;
+package coalpt.ratemodel;
 
-import beast.core.CalculationNode;
-import beast.core.Input;
-import beast.core.parameter.RealParameter;
-import beast.evolution.branchratemodel.BranchRateModel;
-import beast.evolution.tree.Node;
-import beast.evolution.tree.coalescent.PopulationFunction;
+import beast.base.inference.CalculationNode;
+import beast.base.core.Input;
+import beast.base.inference.parameter.RealParameter;
+import beast.base.evolution.branchratemodel.BranchRateModel;
+import beast.base.evolution.tree.Node;
+import beast.base.evolution.tree.coalescent.PopulationFunction;
 
 public class EarlyLateRate extends BranchRateModel.Base {
 

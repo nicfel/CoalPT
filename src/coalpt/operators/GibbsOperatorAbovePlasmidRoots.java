@@ -1,13 +1,13 @@
-package plasmids.operators;
+package coalpt.operators;
 
-import beast.core.Function;
-import beast.core.Input;
-import beast.evolution.tree.coalescent.PopulationFunction;
-import beast.util.Randomizer;
+import beast.base.core.Function;
+import beast.base.core.Input;
+import beast.base.evolution.tree.coalescent.PopulationFunction;
+import beast.base.util.Randomizer;
+import coalpt.distribution.CoalescentWithPlasmids;
 import coalre.network.NetworkEdge;
 import coalre.network.NetworkNode;
 import coalre.operators.NetworkOperator;
-import plasmids.distribution.CoalescentWithPlasmids;
 
 import java.util.*;
 import java.util.stream.Collectors;

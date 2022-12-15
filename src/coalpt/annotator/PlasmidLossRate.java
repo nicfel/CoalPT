@@ -15,9 +15,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package plasmids.annotator;
+package coalpt.annotator;
 
-import beast.core.util.Log;
+import beast.base.core.Log;
 import coalre.network.Network;
 import coalre.network.NetworkEdge;
 import coalre.network.NetworkNode;
@@ -44,22 +44,15 @@ import java.util.stream.Collectors;
  * A rewrite of TreeAnnotator that outputs how often reassortment events happen on trunk branches vs. other branches 
  * @author Nicola Felix Müller <nicola.felix.mueller@gmail.com>
  */
-public class PlasmidTreeMapper extends ReassortmentAnnotator {
+public class PlasmidLossRate extends ReassortmentAnnotator {
 
-    private enum TrunkDefinition { MostRecentSample, TipDistance }
-    
-    List<NetworkNode> allTrunkNodes;
-    List<Double> leaveDistance;
-    List<Boolean> isTrunkNode;
 
     private static class NetworkAnnotatorOptions {
         File inFile;
-        File outFile = new File("tree.trees");
+        File outFile = new File("losscount.txt");
         double burninPercentage = 10.0;
-        TrunkDefinition trunkDefinition = TrunkDefinition.MostRecentSample;
         double minTipDistance = 2.0;
         int[] removeSegments = new int[0];
-        List<File> cladeFiles;
 
 
         @Override
@@ -68,20 +61,16 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
                     "Input file: " + inFile + "\n" +
                     "Output file: " + outFile + "\n" +
                     "Burn-in percentage: " + burninPercentage + "%\n" +
-                    "Definition of the trunk: " + trunkDefinition + "\n" +
             		"minimal distance to a tip to be considered trunk\n" + 
                     "(ignored in MostRecentSample Case): " + minTipDistance;
         }
     }
 
-    public PlasmidTreeMapper(NetworkAnnotatorOptions options) throws IOException {
+    public PlasmidLossRate(NetworkAnnotatorOptions options) throws IOException {
 
         // Display options:
         System.out.println(options + "\n");
-        
-        Map<String, Integer> clades = readCladeFiles(options.cladeFiles);
-        
-        
+                
         // Initialise reader
         ReassortmentLogReader logReader = new ReassortmentLogReader(options.inFile,
                 options.burninPercentage);
@@ -99,138 +88,37 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
         int counter=1;
         // compute the pairwise reassortment distances 
         try (PrintStream ps = new PrintStream(options.outFile)) {
-          	ps.print("#NEXUS\n");
-          	ps.print("Begin trees;\n");
+          	ps.print("number\tsegment\tnrevents\tlength\n");
 
-          	
-	        for (Network network : logReader){	    	
+	        for (Network network : logReader){	
 	        	
-	        	mapClade(network, clades);
-	        	ps.print("tree STATE_" + counter + " = " + getTree(network.getRootEdge(), 1, Double.POSITIVE_INFINITY) + ";\n");
+	        	List<NetworkEdge> edges=network.getEdges().stream()
+        								.filter(e -> !e.isRootEdge())
+	                    				.filter(e -> e.parentNode.isCoalescence())
+	                    				.collect(Collectors.toList());
+	        	
+	        	for (int i = 1; i < network.getSegmentCount();i++) {
+	        		int events = 0;
+	        		double length = 0.0;
+		        	for (NetworkEdge edge : edges) {	
+		        		if (!edge.hasSegments.get(i) && edge.parentNode.getParentEdges().get(0).hasSegments.get(i))
+		        			events++;
+		        		
+		        		if (edge.hasSegments.get(i))
+		        			length+=edge.getLength();
+		        	}		        	
+        			ps.print(counter +"\t" + i + "\t"+ events + "\t"+ length+ "\n");
+
+	        	}
+	        	
 	        	counter=counter+1;
 	        }
-        	ps.print("End;");
-
 	        ps.close();
         }
         System.out.println("\nDone!");
     }
     
-
     
-    private void mapClade(Network network, Map<String, Integer> clades) {
-    	for (NetworkNode n : network.getLeafNodes()) {
-    		Integer clade = clades.get(n.getTaxonLabel());
-    		n.setTypeLabel(Integer.toString(clade));
-    		mapCladesOnNetwork(n.getParentEdges().get(0), clade);
-    	}		
-	}
-    
-    private void mapCladesOnNetwork(NetworkEdge e, Integer clade) {
-    	if (e.isRootEdge())
-    		return;
-    	if (e.parentNode.getTypeLabel()==null) {
-        	e.parentNode.setTypeLabel(Integer.toString(clade));
-   		
-        	for (NetworkEdge enew : e.parentNode.getParentEdges())
-        		if (enew.hasSegments.get(0))
-        			mapCladesOnNetwork(enew, clade);
-    	}
-    	
-    	
-    	
-    }
-
-	public HashMap<String, Integer> readCladeFiles(List<File> cladeFiles) throws IOException {   	
-    	
-    	HashMap<String, Integer> cladeMap = new HashMap<String, Integer>();
-    	
-    	int c=0;
-    	
-    	for (File f : cladeFiles) {
-    		BufferedReader reader = new BufferedReader(new FileReader(f));
-    		String line = reader.readLine();
-    		while (line!=null) {    			
-    			String[] tmp = line.split("\\s+");
-    			if (tmp.length==0)
-    				break;
-    			cladeMap.put(tmp[0], c);
-    			
-    			line = reader.readLine();    			
-    		}
-    		c++;
-    	}
-    	return cladeMap;
-    }
-	
-    private String getTree(NetworkEdge currentEdge, int segment, double lastCoal) {
-        StringBuilder result = new StringBuilder();
-
-        if (!currentEdge.childNode.isLeaf()) {
-        	if (currentEdge.childNode.isCoalescence() && 
-        			currentEdge.childNode.getChildEdges().get(0).hasSegments.get(segment) && 
-        			currentEdge.childNode.getChildEdges().get(1).hasSegments.get(segment)) {
-        		
-                result.append("(");
-
-                boolean isFirst = true;
-                for (NetworkEdge childEdge : currentEdge.childNode.getChildEdges()) {
-                	if (childEdge.hasSegments.get(segment)) {
-    	                if (isFirst)
-    	                    isFirst = false;
-    	                else
-    	                    result.append(",");
-    	
-    	                result.append(getTree(childEdge, segment, currentEdge.childNode.getHeight()));
-                	}
-                }
-
-                result.append(")");
-
-    		}else {
-                boolean isFirst = true;
-                for (NetworkEdge childEdge : currentEdge.childNode.getChildEdges()) {
-                	if (childEdge.hasSegments.get(segment)) {
-    	                if (isFirst)
-    	                    isFirst = false;
-    	                else
-    	                    result.append(",");
-    	
-    	                result.append(getTree(childEdge, segment, lastCoal));
-                	}
-                }
-    		}
-
-        	
-        }
-        
-        
-        if (currentEdge.childNode.isLeaf() || (currentEdge.childNode.isCoalescence() &&
-        		currentEdge.childNode.getChildEdges().get(0).hasSegments.get(segment) && currentEdge.childNode.getChildEdges().get(1).hasSegments.get(segment))) {
-	        if (currentEdge.childNode.getTaxonLabel() != null)
-	            result.append(currentEdge.childNode.getTaxonLabel());
-	
-	        result.append("[&");
-	        result.append("segments=").append(currentEdge.hasSegments);
-	        result.append(",segsCarried=").append(currentEdge.hasSegments.cardinality());
-	        if (currentEdge.childNode.getTypeLabel() != null) {
-	        		result.append(",state=\"").append(currentEdge.childNode.getTypeLabel() +"\"");	        		
-	        }else {
-	        	result.append(",state=\"").append(-1 +"\"");
-	        }
-
-	        result.append("]");
-	
-	        if (lastCoal != Double.POSITIVE_INFINITY)
-	            result.append(":").append(lastCoal - currentEdge.childNode.getHeight());
-	        else
-	            result.append(":0.0");
-	        
-        }
-
-        return result.toString();
-    }
-	
     /**
      * Use a GUI to retrieve ACGAnnotator options.
      *
@@ -272,8 +160,6 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
         burninSlider.setPaintLabels(true);
         burninSlider.setSnapToTicks(true);
 
-        JComboBox<TrunkDefinition> heightMethodCombo = new JComboBox<>(TrunkDefinition.values());
-
 //        JSlider thresholdSlider = new JSlider(JSlider.HORIZONTAL,
 //                0, 100, (int)(options.convSupportThresh));
 //        thresholdSlider.setMajorTickSpacing(50);
@@ -305,7 +191,6 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
                         .addComponent(inFilename)
                         .addComponent(outFilename)
                         .addComponent(burninSlider)
-                        .addComponent(heightMethodCombo)
 //                        .addComponent(thresholdSlider)
                         .addComponent(minTipDistance))
                 .addGroup(layout.createParallelGroup(GroupLayout.Alignment.LEADING, false)
@@ -335,11 +220,7 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
                                 GroupLayout.DEFAULT_SIZE,
                                 GroupLayout.PREFERRED_SIZE))
                 .addGroup(layout.createParallelGroup()
-                        .addComponent(trunkDefinitionLabel)
-                        .addComponent(heightMethodCombo,
-                                GroupLayout.PREFERRED_SIZE,
-                                GroupLayout.DEFAULT_SIZE,
-                                GroupLayout.PREFERRED_SIZE))
+                        .addComponent(trunkDefinitionLabel))
                 .addGroup(layout.createParallelGroup()
                         .addComponent(minTipDistance))
                 );
@@ -352,7 +233,6 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
         JButton runButton = new JButton("Analyze");
         runButton.addActionListener((e) -> {
             options.burninPercentage = burninSlider.getValue();
-            options.trunkDefinition = (TrunkDefinition)heightMethodCombo.getSelectedItem();
             options.minTipDistance = Double.parseDouble(minTipDistance.getText());
             dialog.setVisible(false);
         });
@@ -517,46 +397,6 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
 
                     i += 1;
                     break;
-                case "-trunkDefinition":
-                    if (args.length<=i+1) {
-                        printUsageAndError("-trunkDefinition must be either mostRecentSample or minTipDistance.");
-                    }
-
-                    try {
-                    	if (args[i + 1].equals("mostRecentSample"))
-                    		options.trunkDefinition = TrunkDefinition.MostRecentSample;
-                    	else if (args[i + 1].equals("minTipDistance"))
-                    		options.trunkDefinition = TrunkDefinition.TipDistance;
-                    	else
-                    		throw new NumberFormatException();
-
-                    } catch (NumberFormatException e) {
-                        printUsageAndError("trunkDefinition must be either mostRecentSample or minTipDistance.");
-                    }
-
-                    i += 1;
-                    break;
-                case "-cladeFileInput":
-                    if (args.length<=i+1) {
-                        printUsageAndError("-cladeFileInput must be one or more filenames that are separeted by commas.");
-                    }
-
-                    try {
-                    	String[] filename = args[i + 1].split(",");
-                    	options.cladeFiles = new ArrayList<>();
-                    	for (int j = 0; j < filename.length; j++) {
-                    		options.cladeFiles.add(new File(filename[j]));
-                    	}
-
-                    } catch (NumberFormatException e) {
-                        printUsageAndError("trunkDefinition must be either mostRecentSample or minTipDistance.");
-                    }
-
-                    i += 1;
-                    break;
-
-
-
                 case "-minTipDistance":
                     if (args.length<=i+1) {
                         printUsageAndError("-minTipDistance must be followed by a number.");
@@ -642,7 +482,7 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
 
         // Run ACGAnnotator
         try {
-            new PlasmidTreeMapper(options);
+            new PlasmidLossRate(options);
 
         } catch (Exception e) {
             if (args.length == 0) {

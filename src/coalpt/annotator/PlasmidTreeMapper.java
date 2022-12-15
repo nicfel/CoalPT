@@ -15,9 +15,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package plasmids.annotator;
+package coalpt.annotator;
 
-import beast.core.util.Log;
+import beast.base.core.Log;
 import coalre.network.Network;
 import coalre.network.NetworkEdge;
 import coalre.network.NetworkNode;
@@ -44,7 +44,7 @@ import java.util.stream.Collectors;
  * A rewrite of TreeAnnotator that outputs how often reassortment events happen on trunk branches vs. other branches 
  * @author Nicola Felix Müller <nicola.felix.mueller@gmail.com>
  */
-public class PlasmidTransferCount extends ReassortmentAnnotator {
+public class PlasmidTreeMapper extends ReassortmentAnnotator {
 
     private enum TrunkDefinition { MostRecentSample, TipDistance }
     
@@ -54,7 +54,7 @@ public class PlasmidTransferCount extends ReassortmentAnnotator {
 
     private static class NetworkAnnotatorOptions {
         File inFile;
-        File outFile = new File("transfercount.txt");
+        File outFile = new File("tree.trees");
         double burninPercentage = 10.0;
         TrunkDefinition trunkDefinition = TrunkDefinition.MostRecentSample;
         double minTipDistance = 2.0;
@@ -74,7 +74,7 @@ public class PlasmidTransferCount extends ReassortmentAnnotator {
         }
     }
 
-    public PlasmidTransferCount(NetworkAnnotatorOptions options) throws IOException {
+    public PlasmidTreeMapper(NetworkAnnotatorOptions options) throws IOException {
 
         // Display options:
         System.out.println(options + "\n");
@@ -99,57 +99,29 @@ public class PlasmidTransferCount extends ReassortmentAnnotator {
         int counter=1;
         // compute the pairwise reassortment distances 
         try (PrintStream ps = new PrintStream(options.outFile)) {
-          	ps.print("number\tsegment\tfrom\tto\tfromheight\ttoheight\n");
+          	ps.print("#NEXUS\n");
+          	ps.print("Begin trees;\n");
 
-	        for (Network network : logReader){	
+          	
+	        for (Network network : logReader){	    	
 	        	
 	        	mapClade(network, clades);
-	        	List<NetworkNode> nodes=network.getNodes().stream()
-	                    				.filter(e -> e.isReassortment())
-	                    				.filter(e -> e.getTypeLabel()!=null)
-	                    				.collect(Collectors.toList());
-	        	
-//	        	System.out.println(network.getExtendedNewick(0));
-	        	
-	        	for (NetworkNode node : nodes) {
-	        		NetworkEdge edge = node.getParentEdges().get(0).hasSegments.get(0) ? node.getParentEdges().get(1) : node.getParentEdges().get(0);
-	        		
-	        		NetworkNode parent = getCoalParent(edge, edge.hasSegments.nextSetBit(0));
-	        		
-	        		if (parent!=null)       		
-	        			ps.print(counter +"\t" + edge.hasSegments.nextSetBit(0) + 
-	        					"\t"+ parent.getTypeLabel() + "\t" + edge.childNode.getTypeLabel() + 
-	        					"\t" + parent.getHeight() + "\t" +edge.childNode.getHeight() + "\n");
-	        	}
-	        	
+	        	ps.print("tree STATE_" + counter + " = " + getTree(network.getRootEdge(), 1, Double.POSITIVE_INFINITY) + ";\n");
 	        	counter=counter+1;
 	        }
+        	ps.print("End;");
+
 	        ps.close();
         }
         System.out.println("\nDone!");
     }
     
-    private NetworkNode getCoalParent(NetworkEdge edge, int segment) {
-    	if (edge.parentNode==null)
-    		return null;
-    	
-    	if (edge.parentNode.isCoalescence()) {
-    		if (edge.parentNode.getChildEdges().get(0).hasSegments.get(segment) && edge.parentNode.getChildEdges().get(1).hasSegments.get(segment))
-    			return edge.parentNode;
-			else
-        		return getCoalParent(edge.parentNode.getParentEdges().get(0), segment);
-    	}else{
-    		if (edge.parentNode.getParentEdges().get(0).hasSegments.get(segment)) {
-        		return getCoalParent(edge.parentNode.getParentEdges().get(0), segment);
-    		}else {
-    			return getCoalParent(edge.parentNode.getParentEdges().get(1), segment);
-    		}
-    	}
-    }
+
     
     private void mapClade(Network network, Map<String, Integer> clades) {
-    	for (NetworkNode n : network.getLeafNodes()) {    		
+    	for (NetworkNode n : network.getLeafNodes()) {
     		Integer clade = clades.get(n.getTaxonLabel());
+    		n.setTypeLabel(Integer.toString(clade));
     		mapCladesOnNetwork(n.getParentEdges().get(0), clade);
     	}		
 	}
@@ -189,6 +161,74 @@ public class PlasmidTransferCount extends ReassortmentAnnotator {
     		c++;
     	}
     	return cladeMap;
+    }
+	
+    private String getTree(NetworkEdge currentEdge, int segment, double lastCoal) {
+        StringBuilder result = new StringBuilder();
+
+        if (!currentEdge.childNode.isLeaf()) {
+        	if (currentEdge.childNode.isCoalescence() && 
+        			currentEdge.childNode.getChildEdges().get(0).hasSegments.get(segment) && 
+        			currentEdge.childNode.getChildEdges().get(1).hasSegments.get(segment)) {
+        		
+                result.append("(");
+
+                boolean isFirst = true;
+                for (NetworkEdge childEdge : currentEdge.childNode.getChildEdges()) {
+                	if (childEdge.hasSegments.get(segment)) {
+    	                if (isFirst)
+    	                    isFirst = false;
+    	                else
+    	                    result.append(",");
+    	
+    	                result.append(getTree(childEdge, segment, currentEdge.childNode.getHeight()));
+                	}
+                }
+
+                result.append(")");
+
+    		}else {
+                boolean isFirst = true;
+                for (NetworkEdge childEdge : currentEdge.childNode.getChildEdges()) {
+                	if (childEdge.hasSegments.get(segment)) {
+    	                if (isFirst)
+    	                    isFirst = false;
+    	                else
+    	                    result.append(",");
+    	
+    	                result.append(getTree(childEdge, segment, lastCoal));
+                	}
+                }
+    		}
+
+        	
+        }
+        
+        
+        if (currentEdge.childNode.isLeaf() || (currentEdge.childNode.isCoalescence() &&
+        		currentEdge.childNode.getChildEdges().get(0).hasSegments.get(segment) && currentEdge.childNode.getChildEdges().get(1).hasSegments.get(segment))) {
+	        if (currentEdge.childNode.getTaxonLabel() != null)
+	            result.append(currentEdge.childNode.getTaxonLabel());
+	
+	        result.append("[&");
+	        result.append("segments=").append(currentEdge.hasSegments);
+	        result.append(",segsCarried=").append(currentEdge.hasSegments.cardinality());
+	        if (currentEdge.childNode.getTypeLabel() != null) {
+	        		result.append(",state=\"").append(currentEdge.childNode.getTypeLabel() +"\"");	        		
+	        }else {
+	        	result.append(",state=\"").append(-1 +"\"");
+	        }
+
+	        result.append("]");
+	
+	        if (lastCoal != Double.POSITIVE_INFINITY)
+	            result.append(":").append(lastCoal - currentEdge.childNode.getHeight());
+	        else
+	            result.append(":0.0");
+	        
+        }
+
+        return result.toString();
     }
 	
     /**
@@ -602,7 +642,7 @@ public class PlasmidTransferCount extends ReassortmentAnnotator {
 
         // Run ACGAnnotator
         try {
-            new PlasmidTransferCount(options);
+            new PlasmidTreeMapper(options);
 
         } catch (Exception e) {
             if (args.length == 0) {

@@ -15,9 +15,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package plasmids.annotator;
+package coalpt.annotator;
 
-import beast.core.util.Log;
+import beast.base.core.Log;
 import coalre.network.Network;
 import coalre.network.NetworkEdge;
 import coalre.network.NetworkNode;
@@ -44,15 +44,22 @@ import java.util.stream.Collectors;
  * A rewrite of TreeAnnotator that outputs how often reassortment events happen on trunk branches vs. other branches 
  * @author Nicola Felix Müller <nicola.felix.mueller@gmail.com>
  */
-public class PlasmidLossRate extends ReassortmentAnnotator {
+public class PlasmidTransferCount extends ReassortmentAnnotator {
 
+    private enum TrunkDefinition { MostRecentSample, TipDistance }
+    
+    List<NetworkNode> allTrunkNodes;
+    List<Double> leaveDistance;
+    List<Boolean> isTrunkNode;
 
     private static class NetworkAnnotatorOptions {
         File inFile;
-        File outFile = new File("losscount.txt");
+        File outFile = new File("transfercount.txt");
         double burninPercentage = 10.0;
+        TrunkDefinition trunkDefinition = TrunkDefinition.MostRecentSample;
         double minTipDistance = 2.0;
         int[] removeSegments = new int[0];
+        List<File> cladeFiles;
 
 
         @Override
@@ -61,16 +68,20 @@ public class PlasmidLossRate extends ReassortmentAnnotator {
                     "Input file: " + inFile + "\n" +
                     "Output file: " + outFile + "\n" +
                     "Burn-in percentage: " + burninPercentage + "%\n" +
+                    "Definition of the trunk: " + trunkDefinition + "\n" +
             		"minimal distance to a tip to be considered trunk\n" + 
                     "(ignored in MostRecentSample Case): " + minTipDistance;
         }
     }
 
-    public PlasmidLossRate(NetworkAnnotatorOptions options) throws IOException {
+    public PlasmidTransferCount(NetworkAnnotatorOptions options) throws IOException {
 
         // Display options:
         System.out.println(options + "\n");
-                
+        
+        Map<String, Integer> clades = readCladeFiles(options.cladeFiles);
+        
+        
         // Initialise reader
         ReassortmentLogReader logReader = new ReassortmentLogReader(options.inFile,
                 options.burninPercentage);
@@ -88,27 +99,27 @@ public class PlasmidLossRate extends ReassortmentAnnotator {
         int counter=1;
         // compute the pairwise reassortment distances 
         try (PrintStream ps = new PrintStream(options.outFile)) {
-          	ps.print("number\tsegment\tnrevents\tlength\n");
+          	ps.print("number\tsegment\tfrom\tto\tfromheight\ttoheight\n");
 
 	        for (Network network : logReader){	
 	        	
-	        	List<NetworkEdge> edges=network.getEdges().stream()
-        								.filter(e -> !e.isRootEdge())
-	                    				.filter(e -> e.parentNode.isCoalescence())
+	        	mapClade(network, clades);
+	        	List<NetworkNode> nodes=network.getNodes().stream()
+	                    				.filter(e -> e.isReassortment())
+	                    				.filter(e -> e.getTypeLabel()!=null)
 	                    				.collect(Collectors.toList());
 	        	
-	        	for (int i = 1; i < network.getSegmentCount();i++) {
-	        		int events = 0;
-	        		double length = 0.0;
-		        	for (NetworkEdge edge : edges) {	
-		        		if (!edge.hasSegments.get(i) && edge.parentNode.getParentEdges().get(0).hasSegments.get(i))
-		        			events++;
-		        		
-		        		if (edge.hasSegments.get(i))
-		        			length+=edge.getLength();
-		        	}		        	
-        			ps.print(counter +"\t" + i + "\t"+ events + "\t"+ length+ "\n");
-
+//	        	System.out.println(network.getExtendedNewick(0));
+	        	
+	        	for (NetworkNode node : nodes) {
+	        		NetworkEdge edge = node.getParentEdges().get(0).hasSegments.get(0) ? node.getParentEdges().get(1) : node.getParentEdges().get(0);
+	        		
+	        		NetworkNode parent = getCoalParent(edge, edge.hasSegments.nextSetBit(0));
+	        		
+	        		if (parent!=null)       		
+	        			ps.print(counter +"\t" + edge.hasSegments.nextSetBit(0) + 
+	        					"\t"+ parent.getTypeLabel() + "\t" + edge.childNode.getTypeLabel() + 
+	        					"\t" + parent.getHeight() + "\t" +edge.childNode.getHeight() + "\n");
 	        	}
 	        	
 	        	counter=counter+1;
@@ -118,7 +129,68 @@ public class PlasmidLossRate extends ReassortmentAnnotator {
         System.out.println("\nDone!");
     }
     
+    private NetworkNode getCoalParent(NetworkEdge edge, int segment) {
+    	if (edge.parentNode==null)
+    		return null;
+    	
+    	if (edge.parentNode.isCoalescence()) {
+    		if (edge.parentNode.getChildEdges().get(0).hasSegments.get(segment) && edge.parentNode.getChildEdges().get(1).hasSegments.get(segment))
+    			return edge.parentNode;
+			else
+        		return getCoalParent(edge.parentNode.getParentEdges().get(0), segment);
+    	}else{
+    		if (edge.parentNode.getParentEdges().get(0).hasSegments.get(segment)) {
+        		return getCoalParent(edge.parentNode.getParentEdges().get(0), segment);
+    		}else {
+    			return getCoalParent(edge.parentNode.getParentEdges().get(1), segment);
+    		}
+    	}
+    }
     
+    private void mapClade(Network network, Map<String, Integer> clades) {
+    	for (NetworkNode n : network.getLeafNodes()) {    		
+    		Integer clade = clades.get(n.getTaxonLabel());
+    		mapCladesOnNetwork(n.getParentEdges().get(0), clade);
+    	}		
+	}
+    
+    private void mapCladesOnNetwork(NetworkEdge e, Integer clade) {
+    	if (e.isRootEdge())
+    		return;
+    	if (e.parentNode.getTypeLabel()==null) {
+        	e.parentNode.setTypeLabel(Integer.toString(clade));
+   		
+        	for (NetworkEdge enew : e.parentNode.getParentEdges())
+        		if (enew.hasSegments.get(0))
+        			mapCladesOnNetwork(enew, clade);
+    	}
+    	
+    	
+    	
+    }
+
+	public HashMap<String, Integer> readCladeFiles(List<File> cladeFiles) throws IOException {   	
+    	
+    	HashMap<String, Integer> cladeMap = new HashMap<String, Integer>();
+    	
+    	int c=0;
+    	
+    	for (File f : cladeFiles) {
+    		BufferedReader reader = new BufferedReader(new FileReader(f));
+    		String line = reader.readLine();
+    		while (line!=null) {    			
+    			String[] tmp = line.split("\\s+");
+    			if (tmp.length==0)
+    				break;
+    			cladeMap.put(tmp[0], c);
+    			
+    			line = reader.readLine();    			
+    		}
+    		c++;
+    	}
+    	return cladeMap;
+    }
+	
     /**
      * Use a GUI to retrieve ACGAnnotator options.
      *
@@ -160,6 +232,8 @@ public class PlasmidLossRate extends ReassortmentAnnotator {
         burninSlider.setPaintLabels(true);
         burninSlider.setSnapToTicks(true);
 
+        JComboBox<TrunkDefinition> heightMethodCombo = new JComboBox<>(TrunkDefinition.values());
+
 //        JSlider thresholdSlider = new JSlider(JSlider.HORIZONTAL,
 //                0, 100, (int)(options.convSupportThresh));
 //        thresholdSlider.setMajorTickSpacing(50);
@@ -191,6 +265,7 @@ public class PlasmidLossRate extends ReassortmentAnnotator {
                         .addComponent(inFilename)
                         .addComponent(outFilename)
                         .addComponent(burninSlider)
+                        .addComponent(heightMethodCombo)
 //                        .addComponent(thresholdSlider)
                         .addComponent(minTipDistance))
                 .addGroup(layout.createParallelGroup(GroupLayout.Alignment.LEADING, false)
@@ -220,7 +295,11 @@ public class PlasmidLossRate extends ReassortmentAnnotator {
                                 GroupLayout.DEFAULT_SIZE,
                                 GroupLayout.PREFERRED_SIZE))
                 .addGroup(layout.createParallelGroup()
-                        .addComponent(trunkDefinitionLabel))
+                        .addComponent(trunkDefinitionLabel)
+                        .addComponent(heightMethodCombo,
+                                GroupLayout.PREFERRED_SIZE,
+                                GroupLayout.DEFAULT_SIZE,
+                                GroupLayout.PREFERRED_SIZE))
                 .addGroup(layout.createParallelGroup()
                         .addComponent(minTipDistance))
                 );
@@ -233,6 +312,7 @@ public class PlasmidLossRate extends ReassortmentAnnotator {
         JButton runButton = new JButton("Analyze");
         runButton.addActionListener((e) -> {
             options.burninPercentage = burninSlider.getValue();
+            options.trunkDefinition = (TrunkDefinition)heightMethodCombo.getSelectedItem();
             options.minTipDistance = Double.parseDouble(minTipDistance.getText());
             dialog.setVisible(false);
         });
@@ -397,6 +477,46 @@ public class PlasmidLossRate extends ReassortmentAnnotator {
 
                     i += 1;
                     break;
+                case "-trunkDefinition":
+                    if (args.length<=i+1) {
+                        printUsageAndError("-trunkDefinition must be either mostRecentSample or minTipDistance.");
+                    }
+
+                    try {
+                    	if (args[i + 1].equals("mostRecentSample"))
+                    		options.trunkDefinition = TrunkDefinition.MostRecentSample;
+                    	else if (args[i + 1].equals("minTipDistance"))
+                    		options.trunkDefinition = TrunkDefinition.TipDistance;
+                    	else
+                    		throw new NumberFormatException();
+
+                    } catch (NumberFormatException e) {
+                        printUsageAndError("trunkDefinition must be either mostRecentSample or minTipDistance.");
+                    }
+
+                    i += 1;
+                    break;
+                case "-cladeFileInput":
+                    if (args.length<=i+1) {
+                        printUsageAndError("-cladeFileInput must be one or more filenames that are separeted by commas.");
+                    }
+
+                    try {
+                    	String[] filename = args[i + 1].split(",");
+                    	options.cladeFiles = new ArrayList<>();
+                    	for (int j = 0; j < filename.length; j++) {
+                    		options.cladeFiles.add(new File(filename[j]));
+                    	}
+
+                    } catch (NumberFormatException e) {
+                        printUsageAndError("trunkDefinition must be either mostRecentSample or minTipDistance.");
+                    }
+
+                    i += 1;
+                    break;
+
+
+
                 case "-minTipDistance":
                     if (args.length<=i+1) {
                         printUsageAndError("-minTipDistance must be followed by a number.");
@@ -482,7 +602,7 @@ public class PlasmidLossRate extends ReassortmentAnnotator {
 
         // Run ACGAnnotator
         try {
-            new PlasmidLossRate(options);
+            new PlasmidTransferCount(options);
 
         } catch (Exception e) {
             if (args.length == 0) {

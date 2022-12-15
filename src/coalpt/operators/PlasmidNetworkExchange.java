@@ -1,4 +1,4 @@
-package plasmids.operators;
+package coalpt.operators;
 
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -6,9 +6,9 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import beast.core.Description;
-import beast.core.Input;
-import beast.util.Randomizer;
+import beast.base.core.Description;
+import beast.base.core.Input;
+import beast.base.util.Randomizer;
 import coalre.network.Network;
 import coalre.network.NetworkEdge;
 import coalre.network.NetworkNode;

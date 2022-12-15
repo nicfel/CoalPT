@@ -1,11 +1,11 @@
-package plasmids.statistics;
+package coalpt.statistics;
 
-import beast.core.BEASTObject;
-import beast.core.Input;
-import beast.core.Loggable;
-import beast.core.parameter.RealParameter;
-import beast.evolution.tree.Tree;
-import beast.util.Randomizer;
+import beast.base.core.BEASTObject;
+import beast.base.core.Input;
+import beast.base.core.Loggable;
+import beast.base.inference.parameter.RealParameter;
+import beast.base.evolution.tree.Tree;
+import beast.base.util.Randomizer;
 import coalre.network.Network;
 import coalre.network.NetworkEdge;
 import coalre.network.NetworkNode;
