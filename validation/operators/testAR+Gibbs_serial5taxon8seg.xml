@@ -1,0 +1,126 @@
+<beast version="2.0"
+       namespace="beast.core
+                 :beast.core.util
+                 :beast.core.parameter
+                 :beast.evolution.alignment
+                 :beast.evolution.likelihood
+                 :beast.evolution.tree
+                 :beast.evolution.tree.coalescent
+                 :beast.evolution.sitemodel
+                 :beast.evolution.substitutionmodel
+                 :beast.evolution.operators
+                 :beast.math.distributions
+                 :feast.simulation
+                 :coalre.network
+                 :coalre.statistics
+                 :coalre.simulator
+                 :coalre.operators
+                 :coalre.distribution">
+
+    <run spec="MCMC" chainLength="100000000">
+
+        <state>
+          <stateNode id="reassortmentRate" spec="RealParameter" value="1.0"/>
+          <stateNode id="HA.tree" spec="Tree" taxonset="@taxonSet" trait="@traitSet"/>
+          <stateNode id="MP.tree" spec="Tree" taxonset="@taxonSet" trait="@traitSet"/>
+          <stateNode id="NA.tree" spec="Tree" taxonset="@taxonSet" trait="@traitSet"/>
+          <stateNode id="NP.tree" spec="Tree" taxonset="@taxonSet" trait="@traitSet"/>
+          <stateNode id="NS1.tree" spec="Tree" taxonset="@taxonSet" trait="@traitSet"/>
+          <stateNode id="PA.tree" spec="Tree" taxonset="@taxonSet" trait="@traitSet"/>
+          <stateNode id="PB1.tree" spec="Tree" taxonset="@taxonSet" trait="@traitSet"/>
+          <stateNode id="PB2.tree" spec="Tree" taxonset="@taxonSet" trait="@traitSet"/>
+
+            <stateNode id="network" spec="SimulatedCoalescentNetwork" nSegments="8" enableSegmentTreeUpdate="false">
+                <populationModel spec="ConstantPopulation" id="popModel">
+                    <popSize spec="RealParameter" value="1.0"/>
+                </populationModel>
+
+                <reassortmentRate spec="RealParameter" value="1.0"/>
+
+                <traitSet spec="TraitSet" traitname="date-backward" id="traitSet">
+                    <taxa spec="TaxonSet" id="taxonSet">
+                        <taxon spec="Taxon" id="t1"/>
+                        <taxon spec="Taxon" id="t2"/>
+                        <taxon spec="Taxon" id="t3"/>
+                        <taxon spec="Taxon" id="t4"/>
+                        <taxon spec="Taxon" id="t5"/>
+                    </taxa>
+
+                    t1=0, t2=0.1, t3=0.2, t4=0.3, t5=0.4
+                </traitSet>
+            </stateNode>
+        </state>
+
+        <init spec="SegmentTreeInitializer" network="@network">
+          <segmentTree idref="HA.tree"/>
+          <segmentTree idref="MP.tree"/>
+          <segmentTree idref="NA.tree"/>
+          <segmentTree idref="NP.tree"/>
+          <segmentTree idref="NS1.tree"/>
+          <segmentTree idref="PA.tree"/>
+          <segmentTree idref="PB1.tree"/>
+          <segmentTree idref="PB2.tree"/>
+        </init>
+
+
+        <distribution id="coalDensity" spec="CoalescentWithReassortment">
+            <networkIntervals spec="NetworkIntervals" network="@network"/>
+
+            <populationModel spec="ConstantPopulation">
+                <popSize spec="RealParameter" value="1.0"/>
+            </populationModel>
+
+            <reassortmentRate spec="RealParameter" value="1.0"/>
+        </distribution>
+
+
+        <operator spec="AddRemoveReassortment" network="@network" alpha="1.0" weight="1.0">
+          <segmentTree idref="HA.tree"/>
+          <segmentTree idref="MP.tree"/>
+          <segmentTree idref="NA.tree"/>
+          <segmentTree idref="NP.tree"/>
+          <segmentTree idref="NS1.tree"/>
+          <segmentTree idref="PA.tree"/>
+          <segmentTree idref="PB1.tree"/>
+          <segmentTree idref="PB2.tree"/>
+        </operator>
+
+        <operator id="GibbsOperatorAboveSegmentRoots" spec="GibbsOperatorAboveSegmentRoots" network="@network" weight="3.0">
+          <segmentTree idref="HA.tree"/>
+          <segmentTree idref="MP.tree"/>
+          <segmentTree idref="NA.tree"/>
+          <segmentTree idref="NP.tree"/>
+          <segmentTree idref="NS1.tree"/>
+          <segmentTree idref="PA.tree"/>
+          <segmentTree idref="PB1.tree"/>
+          <segmentTree idref="PB2.tree"/>
+          <populationModel idref="popModel"/>
+          <reassortmentRate idref="reassortmentRate"/>
+        </operator>
+
+        <!-- <operator spec="DivertSegmentOperator" network="@network" weight="10.0">
+          <segmentTree idref="HA.tree"/>
+          <segmentTree idref="MP.tree"/>
+          <segmentTree idref="NA.tree"/>
+          <segmentTree idref="NP.tree"/>
+          <segmentTree idref="NS1.tree"/>
+          <segmentTree idref="PA.tree"/>
+          <segmentTree idref="PB1.tree"/>
+          <segmentTree idref="PB2.tree"/>
+        </operator> -->
+
+
+        <logger spec="Logger" logEvery="1000" mode="tree" fileName="$(filebase).trees">
+            <log idref="network"/>
+        </logger>
+
+        <logger spec="Logger" logEvery="10000" fileName="$(filebase).log">
+            <log spec="NetworkStatsLogger" network="@network"/>
+        </logger>
+
+        <logger spec="Logger" logEvery="1000">
+            <log spec="NetworkStatsLogger" network="@network"/>
+        </logger>
+    </run>
+
+</beast>
