@@ -1,16 +1,18 @@
-package plasmids.simulator;
+package coalpt.simulator;
 
-import beast.core.parameter.RealParameter;
-import beast.evolution.tree.TraitSet;
-import beast.evolution.tree.Tree;
-import beast.evolution.tree.coalescent.ConstantPopulation;
-import beast.util.Randomizer;
+import coalpt.simulator.SimulatedCoalescentWithPlamidsNetwork;
+import coalpt.statistics.PlasmidNetworkStatsLogger;
 import coalre.CoalReTestClass;
 import coalre.simulator.SimulatedCoalescentNetwork;
-import plasmids.statistics.PlasmidNetworkStatsLogger;
 
 import org.junit.Assert;
 import org.junit.Test;
+
+import beast.base.evolution.tree.TraitSet;
+import beast.base.evolution.tree.Tree;
+import beast.base.evolution.tree.coalescent.ConstantPopulation;
+import beast.base.inference.parameter.RealParameter;
+import beast.base.util.Randomizer;
 import test.beast.beast2vs1.trace.DiscreteStatistics;
 
 import java.util.List;

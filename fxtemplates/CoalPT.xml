@@ -1,0 +1,206 @@
+<beast version="2.0"
+       namespace="beast.app.beauti
+                 :beast.core
+                 :beast.evolution.branchratemodel
+                 :beast.evolution.speciation
+                 :beast.evolution.tree.coalescent
+                 :beast.core.util
+                 :beast.core.parameter
+                 :beast.evolution.nuc
+                 :beast.evolution.operators
+                 :beast.evolution.sitemodel
+                 :beast.evolution.substitutionmodel
+                 :beast.evolution.likelihood
+                 :beast.evolution
+                 :beast.math.distributions">
+
+    <mergewith point="treePriorTemplates">
+
+        <!-- Coalescent with Reassortment -->
+        <subtemplate id="CoalescentWithPlasmidTransferConstantPopulation"
+                     class="coalre.util.DummyTreeDistribution"
+                     mainid="CoalescentWithPlasmidsDummy.t:$(n)"
+                     inlineInputs="coalpt.distribution.CoalescentWithPlasmids.networkIntervals"
+                     suppressInputs="coalpt.distribution.PlasmidNetworkIntervals.network">
+            <![CDATA[
+            <stateNode id="plasmidTransferRateCwR.alltrees" spec="beast.base.inference.parameter.RealParameter" value="0.1" estimate="true"/>
+            <stateNode id="popSizeCwR.alltrees" spec="beast.base.inference.parameter.RealParameter" value="1.0" estimate="true"/>
+
+            <stateNode id="networkCwR.alltrees" spec="coalpt.simulator.SimulatedCoalescentWithPlamidsNetwork" nPlasmids="1"
+                        enableSegmentTreeUpdate="false" estimate="true">
+                <plasmidTransferRate spec="beast.base.inference.parameter.RealParameter" value="0.0"/>
+                <populationModel spec="beast.base.evolution.tree.coalescent.ConstantPopulation">
+                    <popSize spec="beast.base.inference.parameter.RealParameter" value="1.0"/>
+                </populationModel>
+
+                <taxonSet spec="beast.base.evolution.alignment.TaxonSet" alignment="@$(n)"/>
+            </stateNode>
+            
+
+            <init id="segmentTreeInitializerCwR.t:$(n)" spec="coalre.network.SegmentTreeInitializer"
+                  network="@networkCwR.alltrees">
+                  <segmentTree idref="Tree.t:$(n)"/>
+            </init>
+
+            <prior spec="coalre.util.DummyTreeDistribution" id="CoalescentWithPlasmidsDummy.t:$(n)" tree="@Tree.t:$(n)"/>
+
+            <prior spec="coalpt.distribution.CoalescentWithPlasmids" id="CoalescentWithPlasmidsPrior.alltrees">
+                <populationModel id="constantPopSizeCwR.alltrees" spec="beast.base.evolution.tree.coalescent.ConstantPopulation">
+                    <popSize idref="popSizeCwR.alltrees"/>
+                </populationModel>
+                <networkIntervals id="networkIntervalsCwR.alltrees" spec="coalpt.distribution.PlasmidNetworkIntervals">
+                    <network idref="networkCwR.alltrees"/>
+                    <plasmidTransferRate idref="plasmidTransferRateCwR.alltrees"/>
+                </networkIntervals>
+            </prior>
+
+
+            <prior id="popSizeCwRPrior.alltrees" x="@popSizeCwR.alltrees">
+                <distr spec="OneOnX"/>
+            </prior>
+
+            <prior id="reassortmentRateCwRPrior.alltrees" x="@plasmidTransferRateCwR.alltrees">
+                <distr spec="OneOnX"/>
+            </prior>
+
+
+            <operator id="plasmidTransferRateCwRScale.alltrees" spec="ScaleOperator"
+                parameter="@plasmidTransferRateCwR.alltrees" scaleFactor="0.5" weight="1.0"/>
+
+            <operator id="popSizeCwRScale.alltrees" spec="ScaleOperator"
+                parameter="@popSizeCwR.alltrees" scaleFactor="0.5" weight="1.0"/>
+
+            <operator id="addRemovePlasmidCwR.alltrees" spec="coalpt.operators.AddRemovePlasmid"
+                      network="@networkCwR.alltrees" alpha="1.0" weight="5.0"/>
+                      
+            <operator id="addRemovePlasmidCoalescentCwR.alltrees" spec="coalpt.operators.AddRemovePlasmidCoalescent"
+                       network="@networkCwR.alltrees" weight="30.0">
+                       <coalescentWithPlasmids idref="CoalescentWithPlasmidsPrior.alltrees"/>
+            </operator>
+
+
+
+            <operator id="uniformNetworkCwR.alltrees" spec="coalre.operators.UniformNetworkNodeHeightOperator"
+                      network="@networkCwR.alltrees" weight="5.0"/>
+
+            <operator id="networkWideExchangeCwR.alltrees" spec="coalpt.operators.PlasmidNetworkExchange"
+                      network="@networkCwR.alltrees" isNarrow="false" weight="5.0"/>
+
+            <operator id="networkNarrowExchangeCwR.alltrees" spec="coalpt.operators.PlasmidNetworkExchange"
+                      network="@networkCwR.alltrees" isNarrow="true" weight="15.0"/>
+
+            <operator id="subNetworkSlideCwR.alltrees" spec="coalpt.operators.SubPlasmidNetworkSlide"
+                      network="@networkCwR.alltrees" weight="30.0"/>
+
+            <operator id="networkGibbsCwR.alltrees" spec="coalpt.operators.GibbsOperatorAbovePlasmidRoots"
+                    network="@networkCwR.alltrees" weight="5.0">
+                    <coalescentWithPlasmids idref="CoalescentWithPlasmidsPrior.alltrees"/>
+            </operator>
+
+
+            <operator id="networkScaleCwR.alltrees" spec="coalre.operators.NetworkScaleOperator"
+                      network="@networkCwR.alltrees" weight="3.0"/>
+
+            <operator id="networkScaleRootCwR.alltrees" spec="coalre.operators.NetworkScaleOperator"
+                      network="@networkCwR.alltrees" scaleRootOnly="true" weight="3.0"/>
+
+            <operator id="networkUpDownCwR.alltrees" spec="coalre.operators.NetworkScaleOperator"
+                      network="@networkCwR.alltrees" weight="3.0"/>
+
+
+            <log id="networkCwRStatsLogger.alltrees" spec="coalpt.statistics.PlasmidNetworkStatsLogger" network="@networkCwR.alltrees"/>
+
+            <logger id="networkCwRLogger.alltrees" spec="Logger" logEvery="10000" mode="tree" fileName="$(filebase).network.trees">
+                <log spec="coalpt.statistics.PlasmidNetworkLogger" network="@networkCwR.alltrees"/>
+            </logger>
+
+            ]]>
+
+            <connect srcID="segmentTreeInitializerCwR.t:$(n)" targetID="mcmc" inputName="init"
+                     if="inposterior(CoalescentWithPlasmidsDummy.t:$(n)) and Tree.t:$(n)/estimate=true"/>
+
+            <connect method="coalpt.util.BEAUtiConnector.customConnector"/>
+
+            <connect srcID="CoalescentWithPlasmidsDummy.t:$(n)" targetID="prior" inputName="distribution"
+                     if="inposterior(CoalescentWithPlasmidsDummy.t:$(n)) and Tree.t:$(n)/estimate=true"/>
+            <connect srcID="CoalescentWithPlasmidsPrior.alltrees" targetID="prior" inputName="distribution"
+                     if="inposterior(CoalescentWithPlasmidsDummy.t:$(n)) and Tree.t:$(n)/estimate=true"/>
+
+            <connect srcID="reassortmentRateCwRPrior.alltrees" targetID="prior" inputName="distribution"
+                     if="inposterior(CoalescentWithPlasmidsPrior.alltrees) and plasmidTransferRateCwR.alltrees/estimate=true"/>
+            <connect srcID="popSizeCwRPrior.alltrees" targetID="prior" inputName="distribution"
+                     if="inposterior(CoalescentWithPlasmidsPrior.alltrees) and popSizeCwR.alltrees/estimate=true"/>
+
+            <connect srcID="plasmidTransferRateCwR.alltrees" targetID="state" inputName="stateNode"
+                     if="inposterior(CoalescentWithPlasmidsPrior.alltrees) and plasmidTransferRateCwR.alltrees/estimate=true"/>
+            <connect srcID="popSizeCwR.alltrees" targetID="state" inputName="stateNode"
+                     if="inposterior(CoalescentWithPlasmidsPrior.alltrees) and popSizeCwR.alltrees/estimate=true"/>
+            <connect srcID="networkCwR.alltrees" targetID="state" inputName="stateNode"
+                     if="inposterior(CoalescentWithPlasmidsPrior.alltrees)"/>
+
+            <connect srcID="plasmidTransferRateCwRScale.alltrees" targetID="mcmc" inputName="operator"
+                     if="inposterior(CoalescentWithPlasmidsPrior.alltrees) and plasmidTransferRateCwR.alltrees/estimate=true"/>
+            <connect srcID="popSizeCwRScale.alltrees" targetID="mcmc" inputName="operator"
+                     if="inposterior(CoalescentWithPlasmidsPrior.alltrees) and popSizeCwR.alltrees/estimate=true"/>
+            <connect srcID="plasmidTransferRateCwR.alltrees" targetID="networkUpDownCwR.alltrees" inputName="downParameter"
+                     if="inposterior(CoalescentWithPlasmidsPrior.alltrees) and plasmidTransferRateCwR.alltrees/estimate=true"/>
+            <connect srcID="popSizeCwR.alltrees" targetID="networkUpDownCwR.alltrees" inputName="upParameter"
+                     if="inposterior(CoalescentWithPlasmidsPrior.alltrees) and popSizeCwR.alltrees/estimate=true"/>
+
+            <connect srcID="addRemovePlasmidCwR.alltrees" targetID="mcmc" inputName="operator"
+                     if="inposterior(CoalescentWithPlasmidsPrior.alltrees) and networkCwR.alltrees/estimate=true"/>
+            <connect srcID="addRemovePlasmidCoalescentCwR.alltrees" targetID="mcmc" inputName="operator"
+                      if="inposterior(CoalescentWithPlasmidsPrior.alltrees) and networkCwR.alltrees/estimate=true"/>
+
+            <connect srcID="uniformNetworkCwR.alltrees" targetID="mcmc" inputName="operator"
+                     if="inposterior(CoalescentWithPlasmidsPrior.alltrees) and networkCwR.alltrees/estimate=true"/>
+            <connect srcID="networkWideExchangeCwR.alltrees" targetID="mcmc" inputName="operator"
+                     if="inposterior(CoalescentWithPlasmidsPrior.alltrees) and networkCwR.alltrees/estimate=true"/>
+            <connect srcID="networkNarrowExchangeCwR.alltrees" targetID="mcmc" inputName="operator"
+                     if="inposterior(CoalescentWithPlasmidsPrior.alltrees) and networkCwR.alltrees/estimate=true"/>
+            <connect srcID="subNetworkSlideCwR.alltrees" targetID="mcmc" inputName="operator"
+                     if="inposterior(CoalescentWithPlasmidsPrior.alltrees) and networkCwR.alltrees/estimate=true"/>
+            <connect srcID="networkGibbsCwR.alltrees" targetID="mcmc" inputName="operator"
+                     if="inposterior(CoalescentWithPlasmidsPrior.alltrees) and networkCwR.alltrees/estimate=true"/>
+            <connect srcID="networkScaleCwR.alltrees" targetID="mcmc" inputName="operator"
+                     if="inposterior(CoalescentWithPlasmidsPrior.alltrees) and networkCwR.alltrees/estimate=true"/>
+            <connect srcID="networkScaleRootCwR.alltrees" targetID="mcmc" inputName="operator"
+                     if="inposterior(CoalescentWithPlasmidsPrior.alltrees) and networkCwR.alltrees/estimate=true"/>
+            <connect srcID="networkUpDownCwR.alltrees" targetID="mcmc" inputName="operator"
+                     if="inposterior(CoalescentWithPlasmidsPrior.alltrees) and networkCwR.alltrees/estimate=true"/>
+
+            <connect srcID="Tree.t:$(n)" targetID="addRemovePlasmidCwR.alltrees" inputName="segmentTree"
+                     if="inposterior(CoalescentWithPlasmidsDummy.t:$(n)) and Tree.t:$(n)/estimate=true"/>
+             <connect srcID="Tree.t:$(n)" targetID="addRemovePlasmidCoalescentCwR.alltrees" inputName="segmentTree"
+                      if="inposterior(CoalescentWithPlasmidsDummy.t:$(n)) and Tree.t:$(n)/estimate=true"/>
+
+            <connect srcID="Tree.t:$(n)" targetID="uniformNetworkCwR.alltrees" inputName="segmentTree"
+                     if="inposterior(CoalescentWithPlasmidsDummy.t:$(n)) and Tree.t:$(n)/estimate=true"/>
+            <connect srcID="Tree.t:$(n)" targetID="networkWideExchangeCwR.alltrees" inputName="segmentTree"
+                     if="inposterior(CoalescentWithPlasmidsDummy.t:$(n)) and Tree.t:$(n)/estimate=true"/>
+            <connect srcID="Tree.t:$(n)" targetID="networkNarrowExchangeCwR.alltrees" inputName="segmentTree"
+                     if="inposterior(CoalescentWithPlasmidsDummy.t:$(n)) and Tree.t:$(n)/estimate=true"/>
+            <connect srcID="Tree.t:$(n)" targetID="subNetworkSlideCwR.alltrees" inputName="segmentTree"
+                     if="inposterior(CoalescentWithPlasmidsDummy.t:$(n)) and Tree.t:$(n)/estimate=true"/>
+            <connect srcID="Tree.t:$(n)" targetID="networkGibbsCwR.alltrees" inputName="segmentTree"
+                     if="inposterior(CoalescentWithPlasmidsDummy.t:$(n)) and Tree.t:$(n)/estimate=true"/>
+            <connect srcID="Tree.t:$(n)" targetID="networkScaleCwR.alltrees" inputName="segmentTree"
+                     if="inposterior(CoalescentWithPlasmidsDummy.t:$(n)) and Tree.t:$(n)/estimate=true"/>
+            <connect srcID="Tree.t:$(n)" targetID="networkScaleRootCwR.alltrees" inputName="segmentTree"
+                     if="inposterior(CoalescentWithPlasmidsDummy.t:$(n)) and Tree.t:$(n)/estimate=true"/>
+            <connect srcID="Tree.t:$(n)" targetID="networkUpDownCwR.alltrees" inputName="segmentTree"
+                     if="inposterior(CoalescentWithPlasmidsDummy.t:$(n)) and Tree.t:$(n)/estimate=true"/>
+
+            <connect srcID="plasmidTransferRateCwR.alltrees" targetID="tracelog" inputName="log"
+                     if="inposterior(CoalescentWithPlasmidsPrior.alltrees) and plasmidTransferRateCwR.alltrees/estimate=true"/>
+            <connect srcID="popSizeCwR.alltrees" targetID="tracelog" inputName="log"
+                     if="inposterior(CoalescentWithPlasmidsPrior.alltrees) and popSizeCwR.alltrees/estimate=true"/>
+            <connect srcID="networkCwRStatsLogger.alltrees" targetID="tracelog" inputName="log"
+                     if="inposterior(CoalescentWithPlasmidsPrior.alltrees) and networkCwR.alltrees/estimate=true"/>
+
+            <connect srcID="networkCwRLogger.alltrees" targetID="mcmc" inputName="logger"
+                     if="inposterior(CoalescentWithPlasmidsPrior.alltrees) and networkCwR.alltrees/estimate=true"/>
+        </subtemplate>
+
+    </mergewith>
+</beast>

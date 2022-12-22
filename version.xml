@@ -1,4 +1,28 @@
-<addon name="CoalPT" version="0.0.1">
-  <depends on="BEAST" atleast="2.5.0"/>
-  <depends on="CoalRe" atleast="0.0.7"/>
-</addon>
+<package name="CoalPT" version="0.0.1">
+   <depends on='BEAST.base' atleast='2.7.2'/>
+   <depends on='BEAST.app' atleast='2.7.2'/>
+   <depends on="CoalRe" atleast="1.0.1"/>
+  
+  <service type="beast.base.core.BEASTInterface">
+    <provider classname="coalpt.annotator.PlasmidLossRate"/>
+    <provider classname="coalpt.annotator.PlasmidTransferCount"/>
+    <provider classname="coalpt.annotator.PlasmidTreeMapper"/>
+    <provider classname="coalpt.distribution.EarlyLateRate"/>
+    <provider classname="coalpt.distribution.CoalescentWithPlasmids"/>
+    <provider classname="coalpt.distribution.PlasmidNetworkDistribution"/>
+    <provider classname="coalpt.distribution.PlasmidNetworkIntervals"/>
+    <provider classname="coalpt.operators.DivertPlasmidOperator"/>
+    <provider classname="coalpt.operators.SubPlasmidNetworkSlide"/>
+    <provider classname="coalpt.operators.AddRemovePlasmidCoalescent"/>
+    <provider classname="coalpt.operators.AddRemovePlasmid"/>
+    <provider classname="coalpt.operators.PlasmidNetworkExchange"/>
+    <provider classname="coalpt.operators.GibbsOperatorAbovePlasmidRoots"/>
+    <provider classname="coalpt.statistics.PlasmidNetworkStatsLogger"/>
+    <provider classname="coalpt.statistics.PlasmidNetworkLogger"/>
+    <provider classname="coalpt.ratemodel.EarlyLateRate"/>
+    <provider classname="coalpt.util.InitFromTree"/>
+    <provider classname="coalpt.util.PlasmidTransferLogger"/>
+    <provider classname="coalpt.simulator.SimulatedCoalescentWithPlamidsNetwork"/>
+  </service>
+
+</package>
