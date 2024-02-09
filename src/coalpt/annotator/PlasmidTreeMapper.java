@@ -27,27 +27,18 @@ import coalre.networkannotator.ReassortmentLogReader;
 import javax.swing.*;
 import javax.swing.border.EtchedBorder;
 import java.awt.*;
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.PrintStream;
+import java.io.*;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * A rewrite of TreeAnnotator that outputs how often reassortment events happen on trunk branches vs. other branches 
  * @author Nicola Felix Müller <nicola.felix.mueller@gmail.com>
  */
 public class PlasmidTreeMapper extends ReassortmentAnnotator {
-
-    private enum TrunkDefinition { MostRecentSample, TipDistance }
-    
     List<NetworkNode> allTrunkNodes;
     List<Double> leaveDistance;
     List<Boolean> isTrunkNode;
@@ -56,10 +47,10 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
         File inFile;
         File outFile = new File("tree.trees");
         double burninPercentage = 10.0;
-        TrunkDefinition trunkDefinition = TrunkDefinition.MostRecentSample;
-        double minTipDistance = 2.0;
         int[] removeSegments = new int[0];
         List<File> cladeFiles;
+
+        int chromosomeNumber = 0;
 
 
         @Override
@@ -68,9 +59,8 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
                     "Input file: " + inFile + "\n" +
                     "Output file: " + outFile + "\n" +
                     "Burn-in percentage: " + burninPercentage + "%\n" +
-                    "Definition of the trunk: " + trunkDefinition + "\n" +
-            		"minimal distance to a tip to be considered trunk\n" + 
-                    "(ignored in MostRecentSample Case): " + minTipDistance;
+            		"minimal distance to a tip to be considered trunk\n" +
+                    "chromosome number (or plasmid to print out) " + chromosomeNumber;
         }
     }
 
@@ -78,10 +68,12 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
 
         // Display options:
         System.out.println(options + "\n");
-        
-        Map<String, Integer> clades = readCladeFiles(options.cladeFiles);
-        
-        
+        Map<String, Integer> clades = new HashMap<String, Integer>();
+        if (options.cladeFiles!=null) {
+            System.out.println("read in clade files: " + options.cladeFiles + "\n");
+            clades = readCladeFiles(options.cladeFiles);
+        }
+
         // Initialise reader
         ReassortmentLogReader logReader = new ReassortmentLogReader(options.inFile,
                 options.burninPercentage);
@@ -104,9 +96,11 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
 
           	
 	        for (Network network : logReader){	    	
-	        	
-	        	mapClade(network, clades);
-	        	ps.print("tree STATE_" + counter + " = " + getTree(network.getRootEdge(), 1, Double.POSITIVE_INFINITY) + ";\n");
+	        	if (clades.size()>0)
+	        	    mapClade(network, clades);
+	        	ps.print("tree STATE_" + counter + " = " +
+                        getTree(network.getRootEdge(), options.chromosomeNumber, Double.POSITIVE_INFINITY, network.getSegmentCount())
+                        + ";\n");
 	        	counter=counter+1;
 	        }
         	ps.print("End;");
@@ -136,9 +130,6 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
         		if (enew.hasSegments.get(0))
         			mapCladesOnNetwork(enew, clade);
     	}
-    	
-    	
-    	
     }
 
 	public HashMap<String, Integer> readCladeFiles(List<File> cladeFiles) throws IOException {   	
@@ -163,7 +154,7 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
     	return cladeMap;
     }
 	
-    private String getTree(NetworkEdge currentEdge, int segment, double lastCoal) {
+    private String getTree(NetworkEdge currentEdge, int segment, double lastCoal, int segmentCount) {
         StringBuilder result = new StringBuilder();
 
         if (!currentEdge.childNode.isLeaf()) {
@@ -181,7 +172,7 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
     	                else
     	                    result.append(",");
     	
-    	                result.append(getTree(childEdge, segment, currentEdge.childNode.getHeight()));
+    	                result.append(getTree(childEdge, segment, currentEdge.childNode.getHeight(), segmentCount));
                 	}
                 }
 
@@ -196,7 +187,7 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
     	                else
     	                    result.append(",");
     	
-    	                result.append(getTree(childEdge, segment, lastCoal));
+    	                result.append(getTree(childEdge, segment, lastCoal, segmentCount));
                 	}
                 }
     		}
@@ -211,8 +202,14 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
 	            result.append(currentEdge.childNode.getTaxonLabel());
 	
 	        result.append("[&");
-	        result.append("segments=").append(currentEdge.hasSegments);
-	        result.append(",segsCarried=").append(currentEdge.hasSegments.cardinality());
+            result.append("segsCarried=").append(currentEdge.hasSegments.cardinality());
+            for (int i=0; i<segmentCount; i++) {
+            	if (currentEdge.hasSegments.get(i))
+            		result.append(",seg").append(i).append("=1");
+                else
+                	result.append(",seg").append(i).append("=0");
+            }
+//	        result.append("segments=").append(currentEdge.hasSegments);
 	        if (currentEdge.childNode.getTypeLabel() != null) {
 	        		result.append(",state=\"").append(currentEdge.childNode.getTypeLabel() +"\"");	        		
 	        }else {
@@ -244,12 +241,12 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
         JDialog dialog = new JDialog((JDialog)null, true);
         dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         dialog.setLocationRelativeTo(null);
-        dialog.setTitle("Reassortment Event Trunk Mapper");
+        dialog.setTitle("Plasmid Tree Mapper");
 
         JLabel logFileLabel = new JLabel("Reassortment Network log file:");
         JLabel outFileLabel = new JLabel("Output file:");
         JLabel burninLabel = new JLabel("Burn-in percentage:");
-        JLabel trunkDefinitionLabel = new JLabel("Trunk definition:");
+        JLabel chromosomeIndexLabel = new JLabel("Index of the chromosome (or plasmid)\nto output, starts counting at 0:");
 
         JTextField inFilename = new JTextField(20);
         inFilename.setEditable(false);
@@ -260,8 +257,9 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
         outFilename.setEditable(false);
         JButton outFileButton = new JButton("Choose File");
 
-        JTextField minTipDistance = new JTextField(20);
-        minTipDistance.setEditable(true);
+        JTextField chromosomeIndex = new JTextField(20);
+        chromosomeIndex.setText(Integer.toString(options.chromosomeNumber));
+        chromosomeIndex.setEditable(true);
 //        minTipDistance.setEnabled(false);        
 
         JSlider burninSlider = new JSlider(JSlider.HORIZONTAL,
@@ -271,16 +269,6 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
         burninSlider.setPaintTicks(true);
         burninSlider.setPaintLabels(true);
         burninSlider.setSnapToTicks(true);
-
-        JComboBox<TrunkDefinition> heightMethodCombo = new JComboBox<>(TrunkDefinition.values());
-
-//        JSlider thresholdSlider = new JSlider(JSlider.HORIZONTAL,
-//                0, 100, (int)(options.convSupportThresh));
-//        thresholdSlider.setMajorTickSpacing(50);
-//        thresholdSlider.setMinorTickSpacing(10);
-//        thresholdSlider.setPaintTicks(true);
-//        thresholdSlider.setPaintLabels(true);
-//        thresholdSlider.setSnapToTicks(true);
 
         Container cp = dialog.getContentPane();
         BoxLayout boxLayout = new BoxLayout(cp, BoxLayout.PAGE_AXIS);
@@ -298,16 +286,12 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
                         .addComponent(logFileLabel)
                         .addComponent(outFileLabel)
                         .addComponent(burninLabel)
-                        .addComponent(trunkDefinitionLabel))
-//                        .addComponent(thresholdLabel)
-//                        .addComponent(geneFlowCheckBox))
+                        .addComponent(chromosomeIndexLabel))
                 .addGroup(layout.createParallelGroup(GroupLayout.Alignment.LEADING, false)
                         .addComponent(inFilename)
                         .addComponent(outFilename)
                         .addComponent(burninSlider)
-                        .addComponent(heightMethodCombo)
-//                        .addComponent(thresholdSlider)
-                        .addComponent(minTipDistance))
+                        .addComponent(chromosomeIndex))
                 .addGroup(layout.createParallelGroup(GroupLayout.Alignment.LEADING, false)
                         .addComponent(inFileButton)
                         .addComponent(outFileButton))
@@ -335,13 +319,8 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
                                 GroupLayout.DEFAULT_SIZE,
                                 GroupLayout.PREFERRED_SIZE))
                 .addGroup(layout.createParallelGroup()
-                        .addComponent(trunkDefinitionLabel)
-                        .addComponent(heightMethodCombo,
-                                GroupLayout.PREFERRED_SIZE,
-                                GroupLayout.DEFAULT_SIZE,
-                                GroupLayout.PREFERRED_SIZE))
-                .addGroup(layout.createParallelGroup()
-                        .addComponent(minTipDistance))
+                        .addComponent(chromosomeIndexLabel)
+                        .addComponent(chromosomeIndex))
                 );
 
         mainPanel.setBorder(new EtchedBorder());
@@ -352,8 +331,7 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
         JButton runButton = new JButton("Analyze");
         runButton.addActionListener((e) -> {
             options.burninPercentage = burninSlider.getValue();
-            options.trunkDefinition = (TrunkDefinition)heightMethodCombo.getSelectedItem();
-            options.minTipDistance = Double.parseDouble(minTipDistance.getText());
+            options.chromosomeNumber = Integer.parseInt(chromosomeIndex.getText());
             dialog.setVisible(false);
         });
         runButton.setEnabled(false);
@@ -450,25 +428,22 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
     }
 
     public static String helpMessage =
-            "TrunkReassortment - counts how many reassortment events happened on trunk and non-trunk nodes.\n"
+            "PlasmidTreeMapper - Analyzes reassortment networks to map plasmid trees.\n"
                     + "\n"
-                    + "Usage: appstore ACGAnnotator [-help | [options] logFile [outputFile]\n"
+                    + "Usage: PlasmidTreeMapper [options] <inputLogFile> [outputFile]\n"
                     + "\n"
-                    + "Option                   Description\n"
+                    + "Options:\n"
                     + "--------------------------------------------------------------\n"
-                    + "-help                    Display usage info.\n"
-                    + "-trunkDefinition {MostRecentSample, TipDistance} Choose trunk definition method.\n"
-                    + "                         (default MostRecentSample)\n"
-                    + "-burnin percentage       Choose _percentage_ of log to discard\n"
-                    + "                         in order to remove burn-in period.\n"
-                    + "                         (Default 10%)\n"
-                    + "-minTipDistance     		minimum distance between internal network node\n"
-                    + "                         and tip node such that the internal node is considered trunk.\n"
-                    + "                         If not  specified, the trunk is any node between samples\n"
-                    + "                         height=0 and the root.\n"
+                    + "-help                    Display this usage information.\n"
+                    + "-burnin <percentage>     Specify the percentage of the log file to discard\n"
+                    + "                         as burn-in. Default is 10%.\n"
+                    + "-chromosomeIndex <index> Specify the index of the chromosome or plasmid to output,\n"
+                    + "                         starting from 0. Default is 0.\n"
+                    + "-cladeFileInput <file1,file2,...> Input one or more clade files separated by commas.\n"
+                    + "-removeSegments <seg1,seg2,...> Specify segments to remove, separated by commas.\n"
                     + "\n"
-                    + "If no output file is specified, output is written to a file\n"
-                    + "named 'reassortment_distances.txt'.";
+                    + "If no output file is specified, the default output file name is 'tree.trees'.\n"
+                    + "The inputLogFile is mandatory and must be a valid reassortment network log file.";
 
     /**
      * Print usage info and exit.
@@ -517,21 +492,15 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
 
                     i += 1;
                     break;
-                case "-trunkDefinition":
+                case "-chromosomeIndex":
                     if (args.length<=i+1) {
                         printUsageAndError("-trunkDefinition must be either mostRecentSample or minTipDistance.");
                     }
 
                     try {
-                    	if (args[i + 1].equals("mostRecentSample"))
-                    		options.trunkDefinition = TrunkDefinition.MostRecentSample;
-                    	else if (args[i + 1].equals("minTipDistance"))
-                    		options.trunkDefinition = TrunkDefinition.TipDistance;
-                    	else
-                    		throw new NumberFormatException();
-
+                        options.chromosomeNumber = Integer.parseInt(args[i + 1]);
                     } catch (NumberFormatException e) {
-                        printUsageAndError("trunkDefinition must be either mostRecentSample or minTipDistance.");
+                        printUsageAndError("Error parsing burnin percentage.");
                     }
 
                     i += 1;
@@ -555,23 +524,6 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
                     i += 1;
                     break;
 
-
-
-                case "-minTipDistance":
-                    if (args.length<=i+1) {
-                        printUsageAndError("-minTipDistance must be followed by a number.");
-                    }
-
-                    try {
-                        options.minTipDistance =
-                                Double.parseDouble(args[i + 1]);
-                    } catch (NumberFormatException e) {
-                        printUsageAndError("minTipDistance must be a positive number. ");
-                     }
-
-                    i += 1;
-                    break;
-                    
                 case "-removeSegments":
                     if (args.length<=i+1) {
                         printUsageAndError("-removeSegments must be followed by at least one number.");

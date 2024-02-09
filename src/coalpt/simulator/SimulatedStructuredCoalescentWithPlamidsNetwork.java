@@ -19,14 +19,18 @@ import java.util.BitSet;
 import java.util.Comparator;
 import java.util.List;
 
-public class SimulatedCoalescentWithPlamidsNetwork extends Network {
+public class SimulatedStructuredCoalescentWithPlamidsNetwork extends Network {
 
     public Input<RealParameter> plasmidTransferRateInput = new Input<>("plasmidTransferRate",
             "Rate of jumping of an individual plasmid", Validate.REQUIRED);
 
     public Input<PopulationFunction> populationFunctionInput = new Input<>("populationModel",
             "Population model to use.", Validate.REQUIRED);
-    
+
+    public Input<RealParameter> migrationRatesInput = new Input<>("migrationRates",
+            "migration rates to use.", Validate.REQUIRED);
+
+
     public Input<List<Tree>> treesInput = new Input<>("tree",
             "multiple trees, the first is assumed to be from the core, all else from plasmids.", new ArrayList<>());
 
@@ -35,6 +39,10 @@ public class SimulatedCoalescentWithPlamidsNetwork extends Network {
 
     public Input<TraitSet> traitSetInput = new Input<>("traitSet",
             "Trait set used to assign leaf ages.");
+
+    public Input<TraitSet> statesInput = new Input<>("states",
+            "states used to assign leaf ages.");
+
 
     public Input<TaxonSet> taxonSetInput = new Input<>("taxonSet",
             "Taxon set used to define leaves");
@@ -69,8 +77,8 @@ public class SimulatedCoalescentWithPlamidsNetwork extends Network {
         populationFunction = populationFunctionInput.get();
         plasmidTransferRate = plasmidTransferRateInput.get();
 
-        if (nPlasmids<0) {
-            throw new IllegalArgumentException("cant have less than 0 plasmid!");
+        if (nPlasmids==0) {
+            throw new IllegalArgumentException("Need at least one plasmid!");
         }
 
         // Set up sample nodes:

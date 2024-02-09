@@ -20,28 +20,23 @@ package coalpt.annotator;
 import beast.base.core.Log;
 import coalre.network.Network;
 import coalre.network.NetworkEdge;
-import coalre.network.NetworkNode;
 import coalre.networkannotator.ReassortmentAnnotator;
 import coalre.networkannotator.ReassortmentLogReader;
 
 import javax.swing.*;
 import javax.swing.border.EtchedBorder;
 import java.awt.*;
-import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileReader;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.lang.reflect.InvocationTargetException;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * A rewrite of TreeAnnotator that outputs how often reassortment events happen on trunk branches vs. other branches 
+ * Estimates how often plasmids are lost on a branch and provides the total lengths of branches where plasmids
+ * could get lost
  * @author Nicola Felix Müller <nicola.felix.mueller@gmail.com>
  */
 public class PlasmidLossRate extends ReassortmentAnnotator {
@@ -67,10 +62,8 @@ public class PlasmidLossRate extends ReassortmentAnnotator {
     }
 
     public PlasmidLossRate(NetworkAnnotatorOptions options) throws IOException {
-
         // Display options:
         System.out.println(options + "\n");
-                
         // Initialise reader
         ReassortmentLogReader logReader = new ReassortmentLogReader(options.inFile,
                 options.burninPercentage);

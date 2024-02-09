@@ -1,5 +1,6 @@
 package coalpt.util;
 
+import beast.base.evolution.alignment.TaxonSet;
 import beastfx.app.inputeditor.BeautiDoc;
 import beast.base.inference.parameter.RealParameter;
 import beast.base.core.BEASTInterface;
@@ -15,7 +16,7 @@ import beast.base.evolution.tree.TraitSet;
 import beast.base.evolution.tree.Tree;
 import coalre.network.SegmentTreeInitializer;
 import coalre.operators.NetworkScaleOperator;
-import coalre.simulator.SimulatedCoalescentNetwork;
+import coalpt.simulator.SimulatedCoalescentWithPlamidsNetwork;
 import coalre.util.DummyTreeDistribution;
 
 import java.util.*;
@@ -36,12 +37,10 @@ public class BEAUtiConnector {
 
         Set<RealParameter> parametersToScaleUp = new HashSet<>();
         Set<RealParameter> parametersToScaleDown = new HashSet<>();
-        Set<Tree> segmentTrees = new HashSet<>();
+        List<Tree> segmentTrees = new ArrayList<>();
 
         for (BEASTInterface p : doc.getPartitions("tree")) {
             String pId = BeautiDoc.parsePartition(p.getID());
-
-            System.out.println(pId);
 
             DummyTreeDistribution dummy = (DummyTreeDistribution)doc.pluginmap.get("CoalescentWithPlasmidsDummy.t:" + pId);
 
@@ -59,6 +58,7 @@ public class BEAUtiConnector {
             // initializing.  (Better way to do this?)
             SegmentTreeInitializer segmentTreeInitializer =
                     (SegmentTreeInitializer) doc.pluginmap.get("segmentTreeInitializerCwR.t:" + pId);
+
             segmentTreeInitializer.segmentIndexInput.setValue(segTreeCount-1, segmentTreeInitializer);
 
             // Ensure segment tree initializers come first in list:
@@ -69,7 +69,6 @@ public class BEAUtiConnector {
 
 
             // Remove segment trees from standard up/down operators.
-
             for (Operator aos : mcmc.operatorsInput.get()) {
             	if (aos instanceof AdaptableOperatorSampler) {           		
             		
@@ -130,17 +129,12 @@ public class BEAUtiConnector {
             }
             
             mcmc.operatorsInput.get().removeAll(removeOps);
-
-            // Extract trait set from one of the trees to use for network.
-
-            if (traitSet == null && segmentTree.hasDateTrait())
-                traitSet = segmentTree.getDateTrait();
         }
 
 
         // Add clock rates to network up/down operator.
 
-        NetworkScaleOperator networkUpDown = (NetworkScaleOperator)doc.pluginmap.get("networkUpDownCwR.alltrees");
+        NetworkScaleOperator networkUpDown = (NetworkScaleOperator) doc.pluginmap.get("networkUpDownCwR.alltrees");
         if (networkUpDown != null) {
             List<RealParameter> paramsCurrent;
 
@@ -161,22 +155,46 @@ public class BEAUtiConnector {
         }
 
         // Update network initializer:
+        System.out.println("===============");
+        System.out.println("===============");
+        System.out.println("===============");
+        System.out.println(segTreeCount);
 
         if (doc.pluginmap.containsKey("networkCwR.alltrees")) {
-            SimulatedCoalescentNetwork network = (SimulatedCoalescentNetwork) doc.pluginmap.get("networkCwR.alltrees");
+            SimulatedCoalescentWithPlamidsNetwork network = (SimulatedCoalescentWithPlamidsNetwork) doc.pluginmap.get("networkCwR.alltrees");
 
             // Update number of segments for initializer.
-            network.nSegmentsInput.setValue(segTreeCount, network);
+            network.nPlasmidsInput.setValue(segTreeCount-1, network);
 
-            // Provide trait set from first segment tree to network initializer:
-            if (traitSet != null)
-                network.traitSetInput.setValue(traitSet, network);
-          
-            network.segmentTreesInput.get().clear();
-            network.segmentTreesInput.get().addAll(segmentTrees);
+            List<TaxonSet> plasmidTaxonSets = new ArrayList<>();
+            System.out.println("===============");
+            try {
+                System.out.println("add plasmids");
+
+                for (int i = 0; i < segTreeCount; i++) {
+                    if (i == 0) {
+                        network.taxonSetInput.setValue(segmentTrees.get(i).m_taxonset.get(), network);
+                        if (segmentTrees.get(i).hasDateTrait())
+                            network.traitSetInput.setValue(segmentTrees.get(i).getDateTrait(), network);
+                    } else {
+                        plasmidTaxonSets.add(segmentTrees.get(i).m_taxonset.get());
+                    }
+                }
+
+                network.plasmidTaxonSetInput.get().clear();
+                network.plasmidTaxonSetInput.get().addAll(plasmidTaxonSets);
+
+                System.out.println("added plasmids "+ plasmidTaxonSets.size());
+
+            } catch (Exception e) {
+                System.out.println(e.getMessage());
+
+            }
+
 
         }
         
         return false;
     }
+
 }

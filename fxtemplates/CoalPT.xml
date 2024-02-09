@@ -26,7 +26,7 @@
             <stateNode id="plasmidTransferRateCwR.alltrees" spec="beast.base.inference.parameter.RealParameter" value="0.1" estimate="true"/>
             <stateNode id="popSizeCwR.alltrees" spec="beast.base.inference.parameter.RealParameter" value="1.0" estimate="true"/>
 
-            <stateNode id="networkCwR.alltrees" spec="coalpt.simulator.SimulatedCoalescentWithPlamidsNetwork" nPlasmids="1"
+            <stateNode id="networkCwR.alltrees" spec="coalpt.simulator.SimulatedCoalescentWithPlamidsNetwork" nPlasmids="0"
                         enableSegmentTreeUpdate="false" estimate="true">
                 <plasmidTransferRate spec="beast.base.inference.parameter.RealParameter" value="0.0"/>
                 <populationModel spec="beast.base.evolution.tree.coalescent.ConstantPopulation">
@@ -98,15 +98,15 @@
             </operator>
 
 
+
             <operator id="networkScaleCwR.alltrees" spec="coalre.operators.NetworkScaleOperator"
-                      network="@networkCwR.alltrees" weight="3.0"/>
+                      network="@networkCwR.alltrees" weight="3.0" scaleFactor="0.1"/>
 
             <operator id="networkScaleRootCwR.alltrees" spec="coalre.operators.NetworkScaleOperator"
-                      network="@networkCwR.alltrees" scaleRootOnly="true" weight="3.0"/>
+                      network="@networkCwR.alltrees" scaleRootOnly="true" weight="3.0" scaleFactor="0.5"/>
 
             <operator id="networkUpDownCwR.alltrees" spec="coalre.operators.NetworkScaleOperator"
-                      network="@networkCwR.alltrees" weight="3.0"/>
-
+                      network="@networkCwR.alltrees" weight="3.0" scaleFactor="0.1"/>
 
             <log id="networkCwRStatsLogger.alltrees" spec="coalpt.statistics.PlasmidNetworkStatsLogger" network="@networkCwR.alltrees"/>
 
