@@ -18,36 +18,43 @@
 package coalpt.annotator;
 
 import beast.base.core.Log;
+import cern.colt.Arrays;
 import coalre.network.Network;
 import coalre.network.NetworkEdge;
+import coalre.network.NetworkNode;
 import coalre.networkannotator.ReassortmentAnnotator;
 import coalre.networkannotator.ReassortmentLogReader;
 
 import javax.swing.*;
 import javax.swing.border.EtchedBorder;
 import java.awt.*;
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.lang.reflect.InvocationTargetException;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * Estimates how often plasmids are lost on a branch and provides the total lengths of branches where plasmids
- * could get lost
+ * Returns the number of lineages with and without a plasmid over time.
  * @author Nicola Felix Müller <nicola.felix.mueller@gmail.com>
  */
-public class PlasmidLossRate extends ReassortmentAnnotator {
+public class LineagesThroughTime extends ReassortmentAnnotator {
 
 
     private static class NetworkAnnotatorOptions {
         File inFile;
-        File outFile = new File("losscount.txt");
+        File outFile = new File("ltt.txt");
         double burninPercentage = 10.0;
-        double maxTipDistance = Double.POSITIVE_INFINITY;
-        int[] removeSegments = new int[0];
+        double[] timePoints;
+        List<File> cladeFiles;
+        boolean conditionOnChromosome = false;
 
 
         @Override
@@ -55,15 +62,24 @@ public class PlasmidLossRate extends ReassortmentAnnotator {
             return "Active options:\n" +
                     "Input file: " + inFile + "\n" +
                     "Output file: " + outFile + "\n" +
-                    "Burn-in percentage: " + burninPercentage + "%\n" +
-            		"minimal distance to a tip to be considered for plasmid loss calculation\n" + 
-                    "(ignored in MostRecentSample Case): " + maxTipDistance;
+                    "Time points: " + Arrays.toString(timePoints) + "\n" +
+                    "Clade files: " + cladeFiles + "\n" +
+                    "Condition on chromosome: " + conditionOnChromosome + "\n" +
+                    "Burn-in percentage: " + burninPercentage + "\n";
         }
     }
 
-    public PlasmidLossRate(NetworkAnnotatorOptions options) throws IOException {
+    public LineagesThroughTime(NetworkAnnotatorOptions options) throws IOException {
         // Display options:
         System.out.println(options + "\n");
+        
+        Map<String, Integer> clades = new HashMap<String, Integer>();
+        if (options.cladeFiles!=null) {
+            System.out.println("read in clade files: " + options.cladeFiles + "\n");
+            clades = readCladeFiles(options.cladeFiles);
+        }
+
+        
         // Initialise reader
         ReassortmentLogReader logReader = new ReassortmentLogReader(options.inFile,
                 options.burninPercentage);
@@ -81,43 +97,154 @@ public class PlasmidLossRate extends ReassortmentAnnotator {
         int counter=1;
         // compute the pairwise reassortment distances 
         try (PrintStream ps = new PrintStream(options.outFile)) {
-          	ps.print("number\tsegment\tnrevents\tlength\n");
+        	boolean first = true;
 
 	        for (Network network : logReader){	
 	        	
+	        	if (clades.size()>0)
+	        	    mapClade(network, clades);
+	        	
 	        	List<NetworkEdge> edges=network.getEdges().stream()
         								.filter(e -> !e.isRootEdge())
-	                    				.filter(e -> e.parentNode.isCoalescence())
 	                    				.collect(Collectors.toList());
 	        	
-	        	for (int i = 1; i < network.getSegmentCount();i++) {
-	        		int events = 0;
-	        		double length = 0.0;
-		        	for (NetworkEdge edge : edges) {	
-		        		// only use edges where both parent and child are below the minimal tip distance
-						if (edge.parentNode.getHeight() < options.maxTipDistance
-								&& edge.childNode.getHeight() < options.maxTipDistance) {
-		        		
-			        		if (!edge.hasSegments.get(i) && edge.parentNode.getParentEdges().get(0).hasSegments.get(i))
-			        			events++;
-			        		
-			        		if (edge.hasSegments.get(i))
-			        			length+=edge.getLength();
-						}else if (edge.childNode.getHeight() < options.maxTipDistance){
-			        		if (edge.hasSegments.get(i))
-			        			length+=(options.maxTipDistance-edge.childNode.getHeight());
-						}
-		        	}		        	
-        			ps.print(counter +"\t" + i + "\t"+ events + "\t"+ length+ "\n");
+				if (first) {
+					ps.print("iteration\ttime");
+					first = false;
+					for (int i = 0; i < network.getSegmentCount(); i++) {
+						ps.print("\tsegmentprop_" + i);
+					}
+					
+					if (clades.size() > 0) {
+						for (int i = 0; i < network.getSegmentCount(); i++) {
+							for (int j = 0; j < options.cladeFiles.size(); j++) {
+								ps.print("\tclade_" + j + "_segmentprop_" + i);
+							}
 
-	        	}
+						}
+					}
+					
+					ps.print("\n");
+				}
 	        	
+        		for (int j = 0; j < options.timePoints.length; j++) {
+        			double time = options.timePoints[j];
+        			
+        			// get all edges for which edge.childNode.getHeight() is below time and edge.parentNode.getHeight() is above time
+        			double[] segProb = new double[network.getSegmentCount()];    
+        		    int nEdges = 0;
+        			// loop over all edges
+            		for (NetworkEdge edge : edges) {	
+            			// check heights
+            			if (options.conditionOnChromosome) {
+	            			if (edge.childNode.getHeight() < time && edge.parentNode.getHeight() > time && edge.hasSegments.get(0)) {
+								// check if edge carries segment i
+								for (int k = 0; k < network.getSegmentCount(); k++)
+									if (edge.hasSegments.get(k))
+										segProb[k]++;
+								nEdges++;
+							}
+            			}else {
+	            			if (edge.childNode.getHeight() < time && edge.parentNode.getHeight() > time) {
+	            				// check if edge carries segment i
+	            				for (int k = 0; k < network.getSegmentCount();k++)
+	            					if (edge.hasSegments.get(k))
+	            						segProb[k]++;
+	            				nEdges++;
+	            			}  
+            			}
+            		}
+            		ps.print(counter + "\t" + time);
+					for (int k = 0; k < network.getSegmentCount(); k++)
+						ps.print("\t" + segProb[k] / nEdges);
+					
+					
+					if (clades.size() > 0) {
+						double[][] segCladeProb = new double[network.getSegmentCount()][options.cladeFiles.size()];
+						int[] nEdgesClade = new int[options.cladeFiles.size()];
+						// loop over all edges
+						for (NetworkEdge edge : edges) {
+							// check heights
+							if (edge.childNode.getHeight() < time && edge.parentNode.getHeight() > time) {
+								if (edge.parentNode.getTypeLabel() == null)
+									edge.parentNode.setTypeLabel("-1");
+								int clade = Integer.parseInt(edge.parentNode.getTypeLabel());	
+								if (clade > -1) {
+									nEdgesClade[clade]++;
+								}										
+
+								// check if edge carries segment i
+								for (int k = 0; k < network.getSegmentCount(); k++) {
+
+									if (edge.hasSegments.get(k)) {
+										// parse the string from getTypeLabel such that if the Type label is null the clade is -1										
+										if (clade > -1) {
+											segCladeProb[k][clade]++;
+										}
+
+									}
+								}
+							}
+						} 
+						for (int k = 0; k < network.getSegmentCount(); k++)
+							for (int l = 0; l < options.cladeFiles.size(); l++) {
+								ps.print("\t" + segCladeProb[k][l] / nEdgesClade[l]);
+							}
+					}
+					
+					ps.print("\n");
+        		}  
+	        		        	
 	        	counter=counter+1;
 	        }
 	        ps.close();
         }
         System.out.println("\nDone!");
     }
+    
+    private void mapClade(Network network, Map<String, Integer> clades) {
+    	for (NetworkNode n : network.getLeafNodes()) {
+    		Integer clade = clades.get(n.getTaxonLabel());
+    		n.setTypeLabel(Integer.toString(clade));
+    		mapCladesOnNetwork(n.getParentEdges().get(0), clade);
+    	}		
+	}
+    
+    private void mapCladesOnNetwork(NetworkEdge e, Integer clade) {
+    	if (e.isRootEdge())
+    		return;
+    	if (e.parentNode.getTypeLabel()==null) {
+        	e.parentNode.setTypeLabel(Integer.toString(clade));
+   		
+        	for (NetworkEdge enew : e.parentNode.getParentEdges())
+        		if (enew.hasSegments.get(0))
+        			mapCladesOnNetwork(enew, clade);
+    	}
+    }
+
+	public HashMap<String, Integer> readCladeFiles(List<File> cladeFiles) throws IOException {   	
+    	
+    	HashMap<String, Integer> cladeMap = new HashMap<String, Integer>();
+    	
+    	int c=0;
+    	
+    	for (File f : cladeFiles) {
+    		BufferedReader reader = new BufferedReader(new FileReader(f));
+    		String line = reader.readLine();
+    		while (line!=null) {    			
+    			String[] tmp = line.split("\\s+");
+    			if (tmp.length==0)
+    				break;
+    			cladeMap.put(tmp[0], c);
+    			
+    			line = reader.readLine();    			
+    		}
+    		c++;
+    	}
+    	return cladeMap;
+    }
+	
+
     
     
     /**
@@ -234,7 +361,6 @@ public class PlasmidLossRate extends ReassortmentAnnotator {
         JButton runButton = new JButton("Analyze");
         runButton.addActionListener((e) -> {
             options.burninPercentage = burninSlider.getValue();
-            options.maxTipDistance = Double.parseDouble(minTipDistance.getText());
             dialog.setVisible(false);
         });
         runButton.setEnabled(false);
@@ -398,39 +524,66 @@ public class PlasmidLossRate extends ReassortmentAnnotator {
 
                     i += 1;
                     break;
-                case "-maxTipDistance":
+                case "-cladeFileInput":
                     if (args.length<=i+1) {
-                        printUsageAndError("-minTipDistance must be followed by a number.");
+                        printUsageAndError("-cladeFileInput must be one or more filenames that are separeted by commas.");
                     }
 
                     try {
-                        options.maxTipDistance =
-                                Double.parseDouble(args[i + 1]);
-                    } catch (NumberFormatException e) {
-                        printUsageAndError("minTipDistance must be a positive number. ");
-                     }
+                    	String[] filename = args[i + 1].split(",");
+                    	options.cladeFiles = new ArrayList<>();
+                    	for (int j = 0; j < filename.length; j++) {
+                    		options.cladeFiles.add(new File(filename[j]));
+                    	}
 
-                    i += 1;
-                    break;
-                    
-                case "-removeSegments":
-                    if (args.length<=i+1) {
-                        printUsageAndError("-removeSegments must be followed by at least one number.");
+                    } catch (NumberFormatException e) {
+                        printUsageAndError("trunkDefinition must be either mostRecentSample or minTipDistance.");
                     }
 
-                    try {
-                    	String[] argarray = args[i + 1].split(",");
-                    	options.removeSegments = new int[argarray.length];
-                    	for (int j = 0; j < argarray.length; j++)
-                    		options.removeSegments[j] = Integer.parseInt(argarray[j]);
-                    } catch (NumberFormatException e) {
-                        printUsageAndError("removeSegments must be an array of integers separated by commas if more than one");
-                     }
-
                     i += 1;
                     break;
+				case "-conditionOnChromosome":
+					if (args.length <= i + 1)
+						printUsageAndError("-conditionOnChromosome must be followed by true or false.");
+					
+					try {
+						options.conditionOnChromosome = Boolean.parseBoolean(args[i + 1]);
+                    } catch (NumberFormatException e) {
+                        printUsageAndError("Error parsing conditionOnChromosome.");
+                    }
+					i += 1;
+					break;
+					
+                case "-timepoints":
+					if (args.length <= i + 1)
+						printUsageAndError("-timepoints must be followed by 3 numbers start,end,stepsize.");
 
+					String[] timePoints = args[i + 1].split(",");
+					// check that there are three values
+					if (timePoints.length != 3)
+                        printUsageAndError("-timepoints must be followed by 3 numbers start,end,stepsize.");
+					
+					try {
+						double currtime = Double.parseDouble(timePoints[0]);
+						double endtime = Double.parseDouble(timePoints[1]);
+						double stepsize = Double.parseDouble(timePoints[2]);
+						
+						int numTimePoints = (int) ((endtime - currtime) / stepsize) + 1;
+						options.timePoints = new double[numTimePoints];
+						for (int j = 0; j < numTimePoints; j++) {
+							options.timePoints[j] = currtime;
+							currtime += stepsize;
+						}
 
+					} catch (NumberFormatException e) {
+						printUsageAndError("Error parsing timepoints.");
+					}
+					
+
+					i += 1;
+					break;
+					
+                	
                 default:
                     printUsageAndError("Unrecognised command line option '" + args[i] + "'.");
             }
@@ -483,7 +636,7 @@ public class PlasmidLossRate extends ReassortmentAnnotator {
 
         // Run ACGAnnotator
         try {
-            new PlasmidLossRate(options);
+            new LineagesThroughTime(options);
 
         } catch (Exception e) {
             if (args.length == 0) {

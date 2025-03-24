@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 Tim Vaughan <tgvaughan@gmail.com>
+ * Copyright (C) 2024 Nicola Müller <nicola.felix.mueller@gmail.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,37 +18,43 @@
 package coalpt.annotator;
 
 import beast.base.core.Log;
+import beast.base.evolution.tree.Node;
+import beast.base.evolution.tree.Tree;
 import coalre.network.Network;
 import coalre.network.NetworkEdge;
+import coalre.network.NetworkNode;
 import coalre.networkannotator.ReassortmentAnnotator;
 import coalre.networkannotator.ReassortmentLogReader;
 
 import javax.swing.*;
 import javax.swing.border.EtchedBorder;
 import java.awt.*;
-import java.io.File;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.PrintStream;
+import java.io.*;
 import java.lang.reflect.InvocationTargetException;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Map;
 
 /**
- * Estimates how often plasmids are lost on a branch and provides the total lengths of branches where plasmids
- * could get lost
+ * Computes the local branching index from Neher et al. 2014. https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4227306/
+ * for trees mapped from networks. I.e. first, all segments are mapped onto a particular segment and then the LBI is computed for that segment tree
  * @author Nicola Felix Müller <nicola.felix.mueller@gmail.com>
  */
-public class PlasmidLossRate extends ReassortmentAnnotator {
-
+public class ClusterSizeComparison extends ReassortmentAnnotator {
+    List<NetworkNode> allTrunkNodes;
+    List<Double> leaveDistance;
+    List<Boolean> isTrunkNode;
+    int stateCount;
 
     private static class NetworkAnnotatorOptions {
         File inFile;
-        File outFile = new File("losscount.txt");
+        File outFile = new File("sizecomp.tsv");
         double burninPercentage = 10.0;
-        double maxTipDistance = Double.POSITIVE_INFINITY;
-        int[] removeSegments = new int[0];
+        List<File> cladeFiles;
+      
 
+        int segment = 0;
 
         @Override
         public String toString() {
@@ -56,14 +62,24 @@ public class PlasmidLossRate extends ReassortmentAnnotator {
                     "Input file: " + inFile + "\n" +
                     "Output file: " + outFile + "\n" +
                     "Burn-in percentage: " + burninPercentage + "%\n" +
-            		"minimal distance to a tip to be considered for plasmid loss calculation\n" + 
-                    "(ignored in MostRecentSample Case): " + maxTipDistance;
+                    "segment/chromsome or plasmid to use as base tree " + segment + "\n"+
+                    "Clade files: " + cladeFiles + "\n";
+            
         }
     }
 
-    public PlasmidLossRate(NetworkAnnotatorOptions options) throws IOException {
+    public ClusterSizeComparison(NetworkAnnotatorOptions options) throws IOException {
+
         // Display options:
         System.out.println(options + "\n");
+        Map<String, Integer> clades = new HashMap<String, Integer>();
+        if (options.cladeFiles!=null) {
+            System.out.println("read in clade files: " + options.cladeFiles + "\n");
+            clades = readCladeFiles(options.cladeFiles);
+            // get all the unique states in clades
+            stateCount = clades.values().stream().max(Integer::compare).get()+1;
+        }
+
         // Initialise reader
         ReassortmentLogReader logReader = new ReassortmentLogReader(options.inFile,
                 options.burninPercentage);
@@ -77,49 +93,197 @@ public class PlasmidLossRate extends ReassortmentAnnotator {
 	      System.out.println("\nWriting output to " + options.outFile.getName()
 	      + "...");
 	      
+    	int segmentCount=-1;
 
         int counter=1;
+        
         // compute the pairwise reassortment distances 
         try (PrintStream ps = new PrintStream(options.outFile)) {
-          	ps.print("number\tsegment\tnrevents\tlength\n");
+        	ps.print("iteration\ttime\tsegment");
+        	
+        	if (clades.size()>0)
+        		ps.print("\tclade");
+        	
+        	ps.print("\tclusterSize1\tclusterSize2\n");
+          	
+	        for (Network network : logReader){	  
+	        	
+	        	segmentCount = network.getSegmentCount();
+	        	
+	        	if (clades.size()>0)
+	        	    mapClade(network, clades);
+	        	
+	        	Tree segmentTree = new Tree(getTree(network.getRootEdge(), options.segment, Double.POSITIVE_INFINITY, network.getSegmentCount(), clades.size()>0));	        	
+	        	// print the header for the file
+	        	// calculate the cluster size for each node that has two children with different segments
+	        	calculateClusterSize(segmentTree.getRoot(), ps, segmentCount, counter);
 
-	        for (Network network : logReader){	
-	        	
-	        	List<NetworkEdge> edges=network.getEdges().stream()
-        								.filter(e -> !e.isRootEdge())
-	                    				.filter(e -> e.parentNode.isCoalescence())
-	                    				.collect(Collectors.toList());
-	        	
-	        	for (int i = 1; i < network.getSegmentCount();i++) {
-	        		int events = 0;
-	        		double length = 0.0;
-		        	for (NetworkEdge edge : edges) {	
-		        		// only use edges where both parent and child are below the minimal tip distance
-						if (edge.parentNode.getHeight() < options.maxTipDistance
-								&& edge.childNode.getHeight() < options.maxTipDistance) {
-		        		
-			        		if (!edge.hasSegments.get(i) && edge.parentNode.getParentEdges().get(0).hasSegments.get(i))
-			        			events++;
-			        		
-			        		if (edge.hasSegments.get(i))
-			        			length+=edge.getLength();
-						}else if (edge.childNode.getHeight() < options.maxTipDistance){
-			        		if (edge.hasSegments.get(i))
-			        			length+=(options.maxTipDistance-edge.childNode.getHeight());
-						}
-		        	}		        	
-        			ps.print(counter +"\t" + i + "\t"+ events + "\t"+ length+ "\n");
-
-	        	}
-	        	
 	        	counter=counter+1;
 	        }
 	        ps.close();
         }
+        
         System.out.println("\nDone!");
     }
     
+
+	
+	private int calculateClusterSize(Node n, PrintStream ps, int nSegments, int counter) {
+		int clusterSize = 0;
+		if (n.isLeaf()) {
+			clusterSize++;
+		}else {
+			for (Node child : n.getChildren()) {
+				clusterSize += calculateClusterSize(child, ps, nSegments, counter);
+			}
+		}
+		n.setMetaData("clusterSize", clusterSize);
+		n.metaDataString = n.metaDataString + ",clusterSize=" + n.getMetaData("clusterSize");
+		
+		// check if this node has two children with different number of segments, if so, print the segment and the 
+		// cluster size for each child as well as the node time
+		if (n.getChildCount() == 2) {
+			for (int i = 1; i < nSegments; i++) {
+				if (n.getChild(0).getMetaData("seg"+i)!=n.getChild(1).getMetaData("seg"+i)) {
+				 	ps.print(counter + "\t" + n.getHeight() + "\t" + i + "\t");
+				 	
+				 	
+				 	if (n.getChild(0).getMetaData("state")!=null) 
+						ps.print(n.getChild(0).getMetaData("state") + "\t");
+					
+					if ((double) n.getChild(0).getMetaData("seg" + i) == 1.0) {
+						ps.print(n.getChild(0).getMetaData("clusterSize") + "\t"
+								+ n.getChild(1).getMetaData("clusterSize") + "\n");
+					} else {
+						ps.print(n.getChild(1).getMetaData("clusterSize") + "\t"
+								+ n.getChild(0).getMetaData("clusterSize") + "\n");
+					}
+				}
+			}
+		}
+		
+		return clusterSize;
+	}
+	
+ 	private void mapClade(Network network, Map<String, Integer> clades) {
+    	for (NetworkNode n : network.getLeafNodes()) {
+    		Integer clade = clades.get(n.getTaxonLabel());
+    		n.setTypeLabel(Integer.toString(clade));
+    		mapCladesOnNetwork(n.getParentEdges().get(0), clade);
+    	}		
+	}
+ 	
     
+    private void mapCladesOnNetwork(NetworkEdge e, Integer clade) {
+    	if (e.isRootEdge())
+    		return;
+    	if (e.parentNode.getTypeLabel()==null) {
+        	e.parentNode.setTypeLabel(Integer.toString(clade));
+   		
+        	for (NetworkEdge enew : e.parentNode.getParentEdges())
+        		if (enew.hasSegments.get(0))
+        			mapCladesOnNetwork(enew, clade);
+    	}
+    }
+
+	public HashMap<String, Integer> readCladeFiles(List<File> cladeFiles) throws IOException {   	
+    	
+    	HashMap<String, Integer> cladeMap = new HashMap<String, Integer>();
+    	
+    	int c=0;
+    	
+    	for (File f : cladeFiles) {
+    		BufferedReader reader = new BufferedReader(new FileReader(f));
+    		String line = reader.readLine();
+    		while (line!=null) {    			
+    			String[] tmp = line.split("\\s+");
+    			if (tmp.length==0)
+    				break;
+    			cladeMap.put(tmp[0], c);
+    			
+    			line = reader.readLine();    			
+    		}
+    		c++;
+    	}
+    	return cladeMap;
+    }
+	
+    private String getTree(NetworkEdge currentEdge, int segment, double lastCoal, int segmentCount, boolean hasClades) {
+        StringBuilder result = new StringBuilder();
+
+        if (!currentEdge.childNode.isLeaf()) {
+        	if (currentEdge.childNode.isCoalescence() && 
+        			currentEdge.childNode.getChildEdges().get(0).hasSegments.get(segment) && 
+        			currentEdge.childNode.getChildEdges().get(1).hasSegments.get(segment)) {
+        		
+                result.append("(");
+
+                boolean isFirst = true;
+                for (NetworkEdge childEdge : currentEdge.childNode.getChildEdges()) {
+                	if (childEdge.hasSegments.get(segment)) {
+    	                if (isFirst)
+    	                    isFirst = false;
+    	                else
+    	                    result.append(",");
+    	
+    	                result.append(getTree(childEdge, segment, currentEdge.childNode.getHeight(), segmentCount, hasClades));
+                	}
+                }
+
+                result.append(")");
+
+    		}else {
+                boolean isFirst = true;
+                for (NetworkEdge childEdge : currentEdge.childNode.getChildEdges()) {
+                	if (childEdge.hasSegments.get(segment)) {
+    	                if (isFirst)
+    	                    isFirst = false;
+    	                else
+    	                    result.append(",");
+    	
+    	                result.append(getTree(childEdge, segment, lastCoal, segmentCount, hasClades));
+                	}
+                }
+    		}
+
+        	
+        }
+        
+        
+        if (currentEdge.childNode.isLeaf() || (currentEdge.childNode.isCoalescence() &&
+        		currentEdge.childNode.getChildEdges().get(0).hasSegments.get(segment) && currentEdge.childNode.getChildEdges().get(1).hasSegments.get(segment))) {
+	        if (currentEdge.childNode.getTaxonLabel() != null)
+	            result.append(currentEdge.childNode.getTaxonLabel());
+	
+	        result.append("[&");
+            result.append("segsCarried=").append(currentEdge.hasSegments.cardinality());
+            for (int i=0; i<segmentCount; i++) {
+            	if (currentEdge.hasSegments.get(i))
+            		result.append(",seg").append(i).append("=1");
+                else
+                	result.append(",seg").append(i).append("=0");
+            }
+//	        result.append("segments=").append(currentEdge.hasSegments);
+			if (hasClades) {				
+		        if (currentEdge.childNode.getTypeLabel() != null) {
+		        		result.append(",state=\"").append(currentEdge.childNode.getTypeLabel() +"\"");	        		
+		        }else {
+		        	result.append(",state=\"").append(-1 +"\"");
+		        }
+			}
+
+	        result.append("]");
+	
+	        if (lastCoal != Double.POSITIVE_INFINITY)
+	            result.append(":").append(lastCoal - currentEdge.childNode.getHeight());
+	        else
+	            result.append(":0.0");
+	        
+        }
+
+        return result.toString();
+    }
+	
     /**
      * Use a GUI to retrieve ACGAnnotator options.
      *
@@ -133,12 +297,12 @@ public class PlasmidLossRate extends ReassortmentAnnotator {
         JDialog dialog = new JDialog((JDialog)null, true);
         dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
         dialog.setLocationRelativeTo(null);
-        dialog.setTitle("Reassortment Event Trunk Mapper");
+        dialog.setTitle("Plasmid Tree Mapper");
 
         JLabel logFileLabel = new JLabel("Reassortment Network log file:");
         JLabel outFileLabel = new JLabel("Output file:");
         JLabel burninLabel = new JLabel("Burn-in percentage:");
-        JLabel trunkDefinitionLabel = new JLabel("Trunk definition:");
+        JLabel chromosomeIndexLabel = new JLabel("Index of the chromosome (or plasmid)\nto output, starts counting at 0:");
 
         JTextField inFilename = new JTextField(20);
         inFilename.setEditable(false);
@@ -149,8 +313,9 @@ public class PlasmidLossRate extends ReassortmentAnnotator {
         outFilename.setEditable(false);
         JButton outFileButton = new JButton("Choose File");
 
-        JTextField minTipDistance = new JTextField(20);
-        minTipDistance.setEditable(true);
+        JTextField chromosomeIndex = new JTextField(20);
+        chromosomeIndex.setText(Integer.toString(options.segment));
+        chromosomeIndex.setEditable(true);
 //        minTipDistance.setEnabled(false);        
 
         JSlider burninSlider = new JSlider(JSlider.HORIZONTAL,
@@ -160,14 +325,6 @@ public class PlasmidLossRate extends ReassortmentAnnotator {
         burninSlider.setPaintTicks(true);
         burninSlider.setPaintLabels(true);
         burninSlider.setSnapToTicks(true);
-
-//        JSlider thresholdSlider = new JSlider(JSlider.HORIZONTAL,
-//                0, 100, (int)(options.convSupportThresh));
-//        thresholdSlider.setMajorTickSpacing(50);
-//        thresholdSlider.setMinorTickSpacing(10);
-//        thresholdSlider.setPaintTicks(true);
-//        thresholdSlider.setPaintLabels(true);
-//        thresholdSlider.setSnapToTicks(true);
 
         Container cp = dialog.getContentPane();
         BoxLayout boxLayout = new BoxLayout(cp, BoxLayout.PAGE_AXIS);
@@ -185,15 +342,12 @@ public class PlasmidLossRate extends ReassortmentAnnotator {
                         .addComponent(logFileLabel)
                         .addComponent(outFileLabel)
                         .addComponent(burninLabel)
-                        .addComponent(trunkDefinitionLabel))
-//                        .addComponent(thresholdLabel)
-//                        .addComponent(geneFlowCheckBox))
+                        .addComponent(chromosomeIndexLabel))
                 .addGroup(layout.createParallelGroup(GroupLayout.Alignment.LEADING, false)
                         .addComponent(inFilename)
                         .addComponent(outFilename)
                         .addComponent(burninSlider)
-//                        .addComponent(thresholdSlider)
-                        .addComponent(minTipDistance))
+                        .addComponent(chromosomeIndex))
                 .addGroup(layout.createParallelGroup(GroupLayout.Alignment.LEADING, false)
                         .addComponent(inFileButton)
                         .addComponent(outFileButton))
@@ -221,9 +375,8 @@ public class PlasmidLossRate extends ReassortmentAnnotator {
                                 GroupLayout.DEFAULT_SIZE,
                                 GroupLayout.PREFERRED_SIZE))
                 .addGroup(layout.createParallelGroup()
-                        .addComponent(trunkDefinitionLabel))
-                .addGroup(layout.createParallelGroup()
-                        .addComponent(minTipDistance))
+                        .addComponent(chromosomeIndexLabel)
+                        .addComponent(chromosomeIndex))
                 );
 
         mainPanel.setBorder(new EtchedBorder());
@@ -234,7 +387,7 @@ public class PlasmidLossRate extends ReassortmentAnnotator {
         JButton runButton = new JButton("Analyze");
         runButton.addActionListener((e) -> {
             options.burninPercentage = burninSlider.getValue();
-            options.maxTipDistance = Double.parseDouble(minTipDistance.getText());
+            options.segment = Integer.parseInt(chromosomeIndex.getText());
             dialog.setVisible(false);
         });
         runButton.setEnabled(false);
@@ -331,25 +484,22 @@ public class PlasmidLossRate extends ReassortmentAnnotator {
     }
 
     public static String helpMessage =
-            "TrunkReassortment - counts how many reassortment events happened on trunk and non-trunk nodes.\n"
+            "PlasmidTreeMapper - Analyzes reassortment networks to map plasmid trees.\n"
                     + "\n"
-                    + "Usage: appstore ACGAnnotator [-help | [options] logFile [outputFile]\n"
+                    + "Usage: PlasmidTreeMapper [options] <inputLogFile> [outputFile]\n"
                     + "\n"
-                    + "Option                   Description\n"
+                    + "Options:\n"
                     + "--------------------------------------------------------------\n"
-                    + "-help                    Display usage info.\n"
-                    + "-trunkDefinition {MostRecentSample, TipDistance} Choose trunk definition method.\n"
-                    + "                         (default MostRecentSample)\n"
-                    + "-burnin percentage       Choose _percentage_ of log to discard\n"
-                    + "                         in order to remove burn-in period.\n"
-                    + "                         (Default 10%)\n"
-                    + "-minTipDistance     		minimum distance between internal network node\n"
-                    + "                         and tip node such that the internal node is considered trunk.\n"
-                    + "                         If not  specified, the trunk is any node between samples\n"
-                    + "                         height=0 and the root.\n"
+                    + "-help                    Display this usage information.\n"
+                    + "-burnin <percentage>     Specify the percentage of the log file to discard\n"
+                    + "                         as burn-in. Default is 10%.\n"
+                    + "-chromosomeIndex <index> Specify the index of the chromosome or plasmid to output,\n"
+                    + "                         starting from 0. Default is 0.\n"
+                    + "-cladeFileInput <file1,file2,...> Input one or more clade files separated by commas.\n"
+                    + "-removeSegments <seg1,seg2,...> Specify segments to remove, separated by commas.\n"
                     + "\n"
-                    + "If no output file is specified, output is written to a file\n"
-                    + "named 'reassortment_distances.txt'.";
+                    + "If no output file is specified, the default output file name is 'tree.trees'.\n"
+                    + "The inputLogFile is mandatory and must be a valid reassortment network log file.";
 
     /**
      * Print usage info and exit.
@@ -398,38 +548,38 @@ public class PlasmidLossRate extends ReassortmentAnnotator {
 
                     i += 1;
                     break;
-                case "-maxTipDistance":
+                case "-segment":
                     if (args.length<=i+1) {
-                        printUsageAndError("-minTipDistance must be followed by a number.");
+                        printUsageAndError("-segment must be one of the segments in the network.");
                     }
 
                     try {
-                        options.maxTipDistance =
-                                Double.parseDouble(args[i + 1]);
+                        options.segment = Integer.parseInt(args[i + 1]);
                     } catch (NumberFormatException e) {
-                        printUsageAndError("minTipDistance must be a positive number. ");
-                     }
+                        printUsageAndError("Error parsing burnin percentage.");
+                    }
 
                     i += 1;
                     break;
-                    
-                case "-removeSegments":
+                case "-cladeFileInput":
                     if (args.length<=i+1) {
-                        printUsageAndError("-removeSegments must be followed by at least one number.");
+                        printUsageAndError("-cladeFileInput must be one or more filenames that are separeted by commas.");
                     }
 
                     try {
-                    	String[] argarray = args[i + 1].split(",");
-                    	options.removeSegments = new int[argarray.length];
-                    	for (int j = 0; j < argarray.length; j++)
-                    		options.removeSegments[j] = Integer.parseInt(argarray[j]);
+                    	String[] filename = args[i + 1].split(",");
+                    	options.cladeFiles = new ArrayList<>();
+                    	for (int j = 0; j < filename.length; j++) {
+                    		options.cladeFiles.add(new File(filename[j]));
+                    	}
+
                     } catch (NumberFormatException e) {
-                        printUsageAndError("removeSegments must be an array of integers separated by commas if more than one");
-                     }
+                        printUsageAndError("trunkDefinition must be either mostRecentSample or minTipDistance.");
+                    }
 
                     i += 1;
                     break;
-
+              					
 
                 default:
                     printUsageAndError("Unrecognised command line option '" + args[i] + "'.");
@@ -483,7 +633,7 @@ public class PlasmidLossRate extends ReassortmentAnnotator {
 
         // Run ACGAnnotator
         try {
-            new PlasmidLossRate(options);
+            new ClusterSizeComparison(options);
 
         } catch (Exception e) {
             if (args.length == 0) {

@@ -1,11 +1,21 @@
-<package name="CoalPT" version="0.0.4">
+<package name="CoalPT" version="0.0.5">
    <depends on='BEAST.base' atleast='2.7.2'/>
    <depends on='BEAST.app' atleast='2.7.2'/>
    <depends on="CoalRe" atleast="1.0.3"/>
 
   <packageapp class="coalpt.annotator.PlasmidTreeMapper"
             description="PlasmidTreeMapper"/>
-  
+  <packageapp class="coalpt.annotator.SegmentLBI"
+            description="SegmentLBI"/>
+  <packageapp class="coalpt.annotator.PlasmidLossRate"
+            description="PlasmidLossRate"/>
+  <packageapp class="coalpt.annotator.LineagesThroughTime"
+            description="LineagesThroughTime"/>
+  <packageapp class="coalpt.annotator.PlasmidTransferCount"
+            description="PlasmidTransferCount"/>
+  <packageapp class="coalpt.annotator.ClusterSizeComparison"
+            description="ClusterSizeComparison"/>
+
   <service type="beast.base.core.BEASTInterface">
     <provider classname="coalpt.annotator.PlasmidLossRate"/>
     <provider classname="coalpt.annotator.PlasmidTransferCount"/>

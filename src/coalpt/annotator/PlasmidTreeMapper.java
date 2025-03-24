@@ -50,7 +50,7 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
         int[] removeSegments = new int[0];
         List<File> cladeFiles;
 
-        int chromosomeNumber = 0;
+        int followSegment = 0;
 
 
         @Override
@@ -60,7 +60,7 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
                     "Output file: " + outFile + "\n" +
                     "Burn-in percentage: " + burninPercentage + "%\n" +
             		"minimal distance to a tip to be considered trunk\n" +
-                    "chromosome number (or plasmid to print out) " + chromosomeNumber;
+                    "chromosome (or plasmid to print out) " + followSegment;
         }
     }
 
@@ -99,7 +99,7 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
 	        	if (clades.size()>0)
 	        	    mapClade(network, clades);
 	        	ps.print("tree STATE_" + counter + " = " +
-                        getTree(network.getRootEdge(), options.chromosomeNumber, Double.POSITIVE_INFINITY, network.getSegmentCount())
+                        getTree(network.getRootEdge(), options.followSegment, Double.POSITIVE_INFINITY, network.getSegmentCount())
                         + ";\n");
 	        	counter=counter+1;
 	        }
@@ -258,7 +258,7 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
         JButton outFileButton = new JButton("Choose File");
 
         JTextField chromosomeIndex = new JTextField(20);
-        chromosomeIndex.setText(Integer.toString(options.chromosomeNumber));
+        chromosomeIndex.setText(Integer.toString(options.followSegment));
         chromosomeIndex.setEditable(true);
 //        minTipDistance.setEnabled(false);        
 
@@ -331,7 +331,7 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
         JButton runButton = new JButton("Analyze");
         runButton.addActionListener((e) -> {
             options.burninPercentage = burninSlider.getValue();
-            options.chromosomeNumber = Integer.parseInt(chromosomeIndex.getText());
+            options.followSegment = Integer.parseInt(chromosomeIndex.getText());
             dialog.setVisible(false);
         });
         runButton.setEnabled(false);
@@ -492,15 +492,15 @@ public class PlasmidTreeMapper extends ReassortmentAnnotator {
 
                     i += 1;
                     break;
-                case "-chromosomeIndex":
+                case "-followSegment":
                     if (args.length<=i+1) {
-                        printUsageAndError("-trunkDefinition must be either mostRecentSample or minTipDistance.");
+                        printUsageAndError("-followSegment must followed by an integer 0,1....");
                     }
 
                     try {
-                        options.chromosomeNumber = Integer.parseInt(args[i + 1]);
+                        options.followSegment = Integer.parseInt(args[i + 1]);
                     } catch (NumberFormatException e) {
-                        printUsageAndError("Error parsing burnin percentage.");
+                        printUsageAndError("Error parsing followSegment, should be a number between 0 and nuber of segments(plasmids).");
                     }
 
                     i += 1;

@@ -169,10 +169,8 @@ public class PlasmidTransferCount extends ReassortmentAnnotator {
     	
     }
 
-	public HashMap<String, Integer> readCladeFiles(List<File> cladeFiles) throws IOException {   	
-    	
-    	HashMap<String, Integer> cladeMap = new HashMap<String, Integer>();
-    	
+	public HashMap<String, Integer> readCladeFiles(List<File> cladeFiles) throws IOException {
+    	HashMap<String, Integer> cladeMap = new HashMap<String, Integer>();    	
     	int c=0;
     	
     	for (File f : cladeFiles) {

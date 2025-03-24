@@ -54,9 +54,11 @@ public class SegmentLBI extends ReassortmentAnnotator {
         double burninPercentage = 10.0;
         List<File> cladeFiles;
         boolean calculateAverageDifference = false;
+        
 
         int segment = 0;
-        double tau = 1.0;
+        double tau = 10.0;
+        double windowSize = 5.0;
 
 
         @Override
@@ -82,7 +84,6 @@ public class SegmentLBI extends ReassortmentAnnotator {
         if (options.cladeFiles!=null) {
             System.out.println("read in clade files: " + options.cladeFiles + "\n");
             clades = readCladeFiles(options.cladeFiles);
-            
             // get all the unique states in clades
             stateCount = clades.values().stream().max(Integer::compare).get()+1;
         }
@@ -105,25 +106,32 @@ public class SegmentLBI extends ReassortmentAnnotator {
     	int segmentCount=-1;
 
         int counter=1;
+        List<Double[]> parameters = new ArrayList<>();
+        
+        
         // compute the pairwise reassortment distances 
         try (PrintStream ps = new PrintStream(options.outFile)) {
           	ps.print("#NEXUS\n");
           	ps.print("Begin trees;\n");
 
           	
-	        for (Network network : logReader){	    	
-	        	if (clades.size()>0)
-	        	    mapClade(network, clades);
+	        for (Network network : logReader){	  
 	        	
 	        	segmentCount = network.getSegmentCount();
 	        	
+
+	        	if (clades.size()>0)
+	        	    mapClade(network, clades);
+	        	
+	        	
 	        	Tree segmentTree = new Tree(getTree(network.getRootEdge(), options.segment, Double.POSITIVE_INFINITY, network.getSegmentCount()));	        	
-	        	calculateLBI(segmentTree, options.tau);
+	        	calculateLBI(segmentTree, options.tau, options.windowSize);
 	        	calculateClusterSize(segmentTree);
 
 	    	    if (options.outTable != null) {
 		        	trees.add(segmentTree);
 	    	    }
+//	    	    System.exit(0);
 	        	
 	        	ps.print("tree STATE_" + counter + " = " + segmentTree
                         + ";\n");
@@ -173,21 +181,27 @@ public class SegmentLBI extends ReassortmentAnnotator {
 									continue;
 								
 								// compare CS and LBI for all lineages with segment j to all without segment j
-								double[] CS  = new double[2];
+								List<Double>[] CS  = new ArrayList[2];
+								CS[0] = new ArrayList<>();
+								CS[1] = new ArrayList<>();
 								double[] LBI = new double[2];
+								
 								int[] linCounts = new int[2];
 								
 								// also keep track of the state
-								double[][] CS_state  = new double[2][stateCount];
+								List<Double>[][] CS_state  = new ArrayList[2][stateCount];
+								for (int k = 0; k < 2; k++) {
+									for (int s = 0; s < stateCount; s++) {
+										CS_state[k][s] = new ArrayList<>();
+									}
+								}
 								double[][] LBI_state = new double[2][stateCount];
 								int[][] linCounts_state = new int[2][stateCount];
-
-						
+								
 								for (Node otherNode : t.getNodesAsArray()) {
 									if (otherNode.isRoot())
 										continue;
 									
-
 									if (otherNode.getHeight() <= n.getHeight()
 											&& otherNode.getParent().getHeight() > n.getHeight()) {
 										if (otherNode.getMetaData("seg" + j) != null) {
@@ -195,25 +209,25 @@ public class SegmentLBI extends ReassortmentAnnotator {
 											String state = (String) otherNode.getMetaData("state");
 											
 											if ((double) otherNode.getMetaData("seg" + j) == 1.0) {
-												CS[0] += (int) otherNode.getMetaData("clusterSize");
+												CS[0].add(Math.log((int) otherNode.getMetaData("clusterSize")));
 												LBI[0] += (double) otherNode.getMetaData("LBI");
 												linCounts[0]++;
 												
 												if (stateCount > 1) {
-													CS_state[0][Integer.parseInt(state)] += (int) otherNode
-															.getMetaData("clusterSize");
+													CS_state[0][Integer.parseInt(state)].add(Math.log( (int) otherNode
+															.getMetaData("clusterSize")));
 													LBI_state[0][Integer.parseInt(state)] += (double) otherNode
 															.getMetaData("LBI");
 													linCounts_state[0][Integer.parseInt(state)]++;
 												}
 											} else {
-												CS[1] += (int) otherNode.getMetaData("clusterSize");
+												CS[1].add(Math.log((int) otherNode.getMetaData("clusterSize")));
 												LBI[1] += (double) otherNode.getMetaData("LBI");
 												linCounts[1]++;
 												
 												if (stateCount > 1) {
-													CS_state[1][Integer.parseInt(state)] += (int) otherNode
-															.getMetaData("clusterSize");
+													CS_state[1][Integer.parseInt(state)].add(Math.log( (int) otherNode
+															.getMetaData("clusterSize")));
 													LBI_state[1][Integer.parseInt(state)] += (double) otherNode
 															.getMetaData("LBI");
 													linCounts_state[1][Integer.parseInt(state)]++;
@@ -222,19 +236,57 @@ public class SegmentLBI extends ReassortmentAnnotator {
 																						
 										}
 									}
-									// print out all the results
-//									System.out.println("CS: " + CS[0] + " " + CS[1]);
-//									System.out.println("LBI: " + LBI[0] + " " + LBI[1]);
-//									System.out.println("linCounts: " + linCounts[0] + " " + linCounts[1]);
-//									
-									
 								}
-								ps.print("\t" + (CS[0] * linCounts[1]/ (CS[1] * linCounts[0])));
+								// log standardize the CS after flattening CS
+								double mean = 0.0;
+								for (int k = 0; k < CS.length; k++) {
+									for (Double cs : CS[k]) {
+										mean += cs;
+									}
+                                }
+								double std = 0.0;
+								mean /= CS[0].size() + CS[1].size();
+								for (int k = 0; k < CS.length; k++) {
+									for (Double cs : CS[k]) {
+										std += Math.pow(cs - mean, 2);
+									}
+								}
+								//compute the mean in CS[0] and CS[1] after log standardizing
+								double mean0 = 0.0;
+								double mean1 = 0.0;
+								for (Double cs : CS[0]) {
+									mean0 += (cs - mean) / std;
+								}
+								for (Double cs : CS[1]) {
+									mean1 += (cs - mean) / std;
+								}
+																
+								
+								ps.print("\t" + mean0);
 								ps.print("\t" + (LBI[0] * linCounts[1]/ (LBI[1] * linCounts[0])));
 								
 								if (stateCount > 1) {
                                     for (int s = 0; s < stateCount; s++) {
-                                        ps.print("\t" + (CS_state[0][s] * linCounts_state[1][s] / (CS_state[1][s] * linCounts_state[0][s])));
+                                    	// log standardize the CS after flattening CS
+                                    	double mean_state = 0.0;
+                                    	for (int k = 0; k < 2; k++) {
+											for (Double cs : CS_state[k][s]) {
+												mean_state += cs;
+											}
+                                    	}
+                                    	double std_state = 0.0;
+                                    	mean_state /= CS_state[0][s].size() + CS_state[1][s].size();
+                                    	for (int k = 0; k < 2; k++) {
+                                            for (Double cs : CS_state[k][s]) {
+                                                std_state += Math.pow(cs - mean_state, 2);
+                                            }
+                                    	}
+                                    	//compute the mean in CS[0] and CS[1] after log standardizing
+                                    	double mean0_state = 0.0;
+                                    	for (Double cs : CS_state[0][s]) {
+                                            mean0_state += (cs - mean_state) / std_state;
+                                                                           	}
+                                        ps.print("\t" + mean0_state);
                                         ps.print("\t" + (LBI_state[0][s] * linCounts_state[1][s] / (LBI_state[1][s] * linCounts_state[0][s])));
                                     }
                                 }
@@ -287,13 +339,94 @@ public class SegmentLBI extends ReassortmentAnnotator {
 			}
 		}
         System.out.println("\nDone!");
-
-        
     }
     
 
-    // Calculate the local branching index for the mapped tree
-    private void calculateLBI(Tree segmentTree, double tau) {
+//	private Object[] simulateRandomPlasmid(Network network, Double[] doubles, int i) {
+//		// make a new plasmid, plasmid i. First, count how many of each plasmid there are
+//		int plasmidCount = 0;
+//		int nLeafs = network.getLeafNodes().size();
+//		int nPlasmids = network.getSegmentCount();
+//		for (NetworkNode n : network.getLeafNodes()) {
+//			if (n.getParentEdges().get(0).hasSegments.get(i)) {
+//				plasmidCount++;
+//			}
+//		}
+//		
+//		// choose plasmidCount unique random numbers between 0 and nLeafs;
+//		List<Integer> randomIndices = new ArrayList<>();
+//		for (int j = 0; j < plasmidCount; j++) {
+//			int random = (int) Math.random() * nLeafs;
+//			while (randomIndices.contains(random)) {
+//				random = (int) Math.random() * nLeafs;
+//			}
+//			randomIndices.add(random);
+//        }
+//		
+//		int c = 0;
+//		for (NetworkNode n : network.getLeafNodes()) {
+//			if (randomIndices.contains(c)) {
+//				n.getParentEdges().get(0).hasSegments.set(i);
+//			} else {
+//				n.getParentEdges().get(0).hasSegments.clear(i);
+//			}
+//			c++;
+//		}
+//		
+//		
+//		// make a new plasmid with the same Ne and plasmid transfer rate
+//		
+//	}
+//
+
+	private List<Double[]> readLogFile (File logFile, int plasmidCount){
+    	String line;
+    	// skip all lines with #, the first line is the header
+    	// look for the header "Ne" and "plasmidTransferRate". If there is more than one plasmidTransferRate, then
+    	// they will be denotes using "plasmidTransferRate1", "plasmidTransferRate2", etc.
+    	List<Double[]> parameters = new ArrayList<>();
+    	List<Integer> indices = new ArrayList<>();
+    	try {
+        	BufferedReader reader = new BufferedReader(new FileReader(logFile));
+
+        	boolean header = true;
+            while ((line = reader.readLine()) != null) {
+                if (line.startsWith("#"))
+                    continue;
+                
+                if (header) {
+                	// look for the indices of Ne, and plasmidTransferRate
+                	String[] tmp = line.split("\t");
+					for (int i = 0; i < tmp.length; i++) {
+						if (tmp[i].equals("Ne"))
+							indices.add(i);
+						if (tmp[i].startsWith("plasmidTransferRate"))
+							indices.add(i);
+													
+					}					                	
+                	header = false;
+                	continue;
+                }
+                
+                // read in the log files
+                String[] tmp = line.split("\t");
+                Double[] param = new Double[indices.size()];
+				for (int i = 0; i < indices.size(); i++) {
+					param[i] = Double.parseDouble(tmp[indices.get(i)]);
+				}
+				parameters.add(param);
+            }                
+            reader.close();
+            
+    	} catch (IOException e) {
+    		e.printStackTrace();
+    	}
+    	return parameters;		
+	}
+
+
+	// Calculate the local branching index for the mapped tree
+    private void calculateLBI(Tree segmentTree, double tau, double windowSize) {
 		// calculate the LBI using the up down passing from Neher et al. 2014
     	// first, calculate the up passing
     	Node root = segmentTree.getRoot();
@@ -301,7 +434,7 @@ public class SegmentLBI extends ReassortmentAnnotator {
     	upPassing(root, tau);
     	downPassing(root, tau, 0.0);		
     	normalizeLBI(root);
-		normalizeLBIcoexist(segmentTree, tau);
+		normalizeLBIcoexist(segmentTree, tau, windowSize);
 	}
 
 	private double upPassing(Node n, double tau) {
@@ -315,7 +448,7 @@ public class SegmentLBI extends ReassortmentAnnotator {
 		}else if (n.isLeaf()) {
 			double decay = Math.exp((n.getHeight()-n.getParent().getHeight())/tau);
 			double up = tau*(1-decay);
-			
+//			System.out.println("up " + up + " decay " + decay + " tau " + tau);
 			n.setMetaData("up", 0.0);
             return up;			
 		}else {
@@ -338,11 +471,17 @@ public class SegmentLBI extends ReassortmentAnnotator {
 			n.setMetaData("LBI", downContribution + up);
 			
 			for (Node child : n.getChildren()) {
+//				System.out.println(child.getHeight() - n.getHeight());
 				double decay = Math.exp((child.getHeight() - n.getHeight()) / tau);
 				double upChild = tau*(1-decay) + decay*(double) child.getMetaData("up");
 				double down = tau*(1-decay) + decay*(downContribution + up - upChild);
+				
+//				System.out.println("down " + down + " up " + up + " upChild " + upChild + " decay " + decay + " tau " + tau);
+				
+				
 				downPassing(child, tau, down);
-			}			
+			}		
+			
 		}else {
 			n.setMetaData("LBI", downContribution);
 		}
@@ -357,7 +496,7 @@ public class SegmentLBI extends ReassortmentAnnotator {
 	private void normalizeLBIabsolute(Node n, double maxLBI) {
 		double normLBI = (double) n.getMetaData("LBI")/maxLBI;
 		n.metaDataString = n.metaDataString + ",relLBI.abs=" + normLBI;
-		n.setMetaData("relLBIa.abs", normLBI);
+		n.setMetaData("relLBI.abs", normLBI);
 		if (!n.isLeaf()) {
 			for (Node child : n.getChildren()) {
 				normalizeLBIabsolute(child, maxLBI);
@@ -400,7 +539,7 @@ public class SegmentLBI extends ReassortmentAnnotator {
                 }
             }
 			
-			if (ListLBI.size()>1) {
+			if (ListLBI.size()>2) {
 				// get the minimum and maximum entry in the ListLBI
 				double minLBI = ListLBI.stream().min(Double::compare).get();
 				double maxLBI = ListLBI.stream().max(Double::compare).get();
@@ -441,6 +580,87 @@ public class SegmentLBI extends ReassortmentAnnotator {
 		}
 		
 	}
+
+	
+	private void normalizeLBIcoexist(Tree t, double tau, double windowSize) {
+		for (Node n : t.getNodesAsArray()) {
+			List<Double> ListLBI = new ArrayList<Double>();
+			if (n.isLeaf())
+				continue;
+			
+			for (Node otherNode : t.getNodesAsArray()) {
+                if (otherNode.isRoot() || n.isLeaf())
+                    continue;			
+                
+                if (otherNode.getHeight()<=(n.getHeight()+windowSize) && otherNode.getHeight()>(n.getHeight()-windowSize)) {
+                	ListLBI.add((double) otherNode.getMetaData("LBI"));
+                }
+            }
+			
+			if (ListLBI.size()>2) {
+				// get the minimum and maximum entry in the ListLBI
+				double minLBI = 0.0;//ListLBI.stream().min(Double::compare).get();
+				double maxLBI = ListLBI.stream().max(Double::compare).get();
+			
+				double normLBI = maxLBI==0.0 ? 0.0 : ((double) n.getMetaData("LBI") - minLBI) / (maxLBI - minLBI);
+				n.metaDataString = n.metaDataString + ",relLBI.coexist=" + normLBI;
+				n.setMetaData("relLBI.coexist", normLBI);
+				
+				// check if the relLbi.cpexist is larger than the relLBI.abs
+				if (normLBI < (double) n.getMetaData("relLBI.abs")) {
+					System.out.println(n.getMetaData("relLBI.abs") + " " + n.getMetaData("relLBI.coexist"));	
+					System.out.println(ListLBI);
+					System.out.println(maxLBI);
+				}
+				
+			}else {
+				n.metaDataString = n.metaDataString + ",relLBI.coexist=" + 0.0;
+				n.setMetaData("relLBI.coexist", 0.0);
+
+			}
+		}
+		
+		if (stateCount>1) {
+			// in this case, normalize the LBI by all coexisting lineages, but only in the same clade
+			for (Node n : t.getNodesAsArray()) {
+
+				List<Double> ListLBI = new ArrayList<Double>();
+				
+				String state = ((String) n.getMetaData("state"));
+				if (n.isLeaf())
+					continue;
+				
+				for (Node otherNode : t.getNodesAsArray()) {
+					String otherState = ((String) otherNode.getMetaData("state"));
+					if (otherNode.isRoot() || !state.equals(otherState) || otherNode.isLeaf())
+						continue;
+						
+					if (otherNode.getHeight() <= (n.getHeight()+windowSize) 
+							&& otherNode.getHeight() > (n.getHeight()-windowSize)) {
+						ListLBI.add((double) otherNode.getMetaData("LBI"));
+					}
+				}
+				
+				if (ListLBI.size()>2) {
+
+					double minLBI = 0.0;//ListLBI.stream().min(Double::compare).get();
+					double maxLBI = ListLBI.stream().max(Double::compare).get();
+					
+					double normLBI = maxLBI==0.0 ? 0.0 : ((double) n.getMetaData("LBI") - minLBI) / (maxLBI - minLBI);
+
+					n.metaDataString = n.metaDataString + ",relLBI.coexistClade=" + normLBI;
+					n.setMetaData("relLBI.coexistClade", normLBI);
+				}else {
+					n.metaDataString = n.metaDataString + ",relLBI.coexistClade=" + 0.0;
+					n.setMetaData("relLBI.coexistClade", 0.0);
+				}
+
+			}
+
+		}
+		
+	}
+
 
 
 	private double getMaxLBI(Node n) {
@@ -491,24 +711,46 @@ public class SegmentLBI extends ReassortmentAnnotator {
 				continue;
 			
 			int maxClusterSize = 0;
+			List<Double> coexistClusterSize = new ArrayList<>();
+			double mean = 0.0;
+
 			for (Node otherNode : nodes) {
-				if (otherNode.isRoot())
-					continue;			
-				
-                if (otherNode.getHeight()<=n.getHeight() && otherNode.getParent().getHeight()>n.getHeight()) {
-                    maxClusterSize = Math.max(maxClusterSize, (int) otherNode.getMetaData("clusterSize"));
-                }
-            }
-			double relativeClusterSize = maxClusterSize==0.0 ? 0.0 : ((int) n.getMetaData("clusterSize"))/ ((double) maxClusterSize); 
-			n.setMetaData("relativeClusterSize",  relativeClusterSize);
-			n.metaDataString = n.metaDataString + ",relativeClusterSize=" + n.getMetaData("relativeClusterSize");
+			    if (otherNode.isRoot())
+			        continue;			
+
+			    if (otherNode.getHeight() <= n.getHeight() && otherNode.getParent().getHeight() > n.getHeight()) {
+			        int clusterSize = (int) otherNode.getMetaData("clusterSize");
+			        maxClusterSize = Math.max(maxClusterSize, clusterSize);
+			        double logClusterSize = Math.log(clusterSize);
+			        coexistClusterSize.add(logClusterSize);
+			        mean += logClusterSize;
+			    }
+			}
+
+			mean /= coexistClusterSize.size();
+
+			// Compute the standard deviation
+			double std = 0.0;
+			for (Double cs : coexistClusterSize) {
+			    std += Math.pow(cs - mean, 2);
+			}
+			std = Math.sqrt(std / coexistClusterSize.size());
+			
+			if (coexistClusterSize.size()>4 && (int) n.getMetaData("clusterSize")>2) {
+				double relativeClusterSize = (Math.log((int) n.getMetaData("clusterSize")) - mean)/std; 
+				n.setMetaData("relativeClusterSize",  relativeClusterSize);
+				n.metaDataString = n.metaDataString + ",relativeClusterSize=" + n.getMetaData("relativeClusterSize");
+			}
 		}
 		
 		if (stateCount>1) {
 			// in this case, normalize the LBI by all coexisting lineages, but only in the same clade
 			for (Node n : tree.getNodesAsArray()) {
 
-				double maxClusterSize = 0.0;
+				int maxClusterSize = 0;
+				List<Double> coexistClusterSize = new ArrayList<>();
+				double mean = 0.0;
+				
 				String state = ((String) n.getMetaData("state"));
 				if (n.isLeaf())
 					continue;
@@ -518,13 +760,28 @@ public class SegmentLBI extends ReassortmentAnnotator {
 						continue;
 						
 					if (otherNode.getHeight() <= n.getHeight() && otherNode.getParent().getHeight() > n.getHeight()) {
-						maxClusterSize = Math.max(maxClusterSize, (int) otherNode.getMetaData("clusterSize"));
+				        int clusterSize = (int) otherNode.getMetaData("clusterSize");
+				        maxClusterSize = Math.max(maxClusterSize, clusterSize);
+				        double logClusterSize = Math.log(clusterSize);
+				        coexistClusterSize.add(logClusterSize);
+				        mean += logClusterSize;
 					}
 				}
-				double normLBI = maxClusterSize==0.0 ? 0.0 : ((int) n.getMetaData("clusterSize")) / maxClusterSize;
-				n.metaDataString = n.metaDataString + ",relCS.coexistClade=" + normLBI;
-				n.setMetaData("relCS.coexistClade", normLBI);
+				
+				mean /= coexistClusterSize.size();
 
+				// Compute the standard deviation
+				double std = 0.0;
+				for (Double cs : coexistClusterSize) {
+				    std += Math.pow(cs - mean, 2);
+				}
+				std = Math.sqrt(std / coexistClusterSize.size());
+				
+				if (coexistClusterSize.size()>4 && (int) n.getMetaData("clusterSize")>2) {
+					double relativeClusterSize = (Math.log((int) n.getMetaData("clusterSize")) - mean)/std; 
+					n.setMetaData("relCS.coexistClade",  relativeClusterSize);
+					n.metaDataString = n.metaDataString + ",relCS.coexistClade=" + n.getMetaData("relativeClusterSize");
+				}
 			}
 
 		}
@@ -938,6 +1195,20 @@ public class SegmentLBI extends ReassortmentAnnotator {
 
 					i += 1;
 					break;
+				case "-windowSize":
+					if (args.length <= i + 1) {
+						printUsageAndError("-windowSize must be a number.");
+					}
+
+					try {
+						options.windowSize = Double.parseDouble(args[i + 1]);
+					} catch (NumberFormatException e) {
+						printUsageAndError("Error parsing tau.");
+					}
+
+					i += 1;
+					break;
+
 				case "-outTable":
 					if (args.length <= i + 1) {
 						printUsageAndError("-outTable must a file name.");
@@ -982,7 +1253,7 @@ public class SegmentLBI extends ReassortmentAnnotator {
 					}
 					i += 1;
 					break;
-						
+											
 
                 default:
                     printUsageAndError("Unrecognised command line option '" + args[i] + "'.");
