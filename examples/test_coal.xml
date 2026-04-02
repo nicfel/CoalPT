@@ -1,22 +1,24 @@
 <beast version="2.0"
-       namespace="beast.core
-                 :beast.core.util
-                 :beast.core.parameter
-                 :beast.evolution.alignment
-                 :beast.evolution.likelihood
-                 :beast.evolution.tree
-                 :beast.evolution.tree.coalescent
-                 :beast.evolution.sitemodel
-                 :beast.evolution.substitutionmodel
-                 :beast.evolution.operators
-                 :beast.math.distributions
+       namespace="beast.base.inference
+                 :beast.base.inference.parameter
+                 :beast.base.inference.operator
+                 :beast.base.core
+                 :beast.base.evolution.alignment
+                 :beast.base.evolution.likelihood
+                 :beast.base.evolution.tree
+                 :beast.base.evolution.tree.coalescent
+                 :beast.base.evolution.sitemodel
+                 :beast.base.evolution.substitutionmodel
+                 :beast.base.evolution.operator
+                 :beast.base.math.distributions
                  :feast.simulation
-                 :plasmids.network
+                 :coalpt.simulator
+                 :coalpt.operators
+                 :coalpt.distribution
+                 :coalpt.statistics
                  :coalre.statistics
-                 :plasmids.simulator
-                 :plasmids.operators
                  :coalre.operators
-                 :plasmids.distribution">
+                 :coalre.network">
 
     <run spec="MCMC" chainLength="10000000">
 
